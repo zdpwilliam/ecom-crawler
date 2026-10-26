@@ -110,6 +110,15 @@ node tools/cookie-tool.js list
 
 导出的 `data/cookies/<平台>.json` 会在采集该平台时**自动注入**（无需再设 `CRAWL_COOKIES`）。
 
+### 测试
+
+```bash
+npm test   # = node scripts/run-all-smoke.cjs：13 套冒烟+单元测试统一入口（含真实网络，约 4~6 分钟）
+node tools/test-cookie-tool.mjs   # 仅登录自动关闭决策单元测试（秒级）
+```
+
+冒烟脚本逐轮沉淀在 `tools/smoke-round*.cjs`；全量入口顺序执行并汇总退出码。登录态提取的「自动关闭」走双闸判定（`tools/cookie-tool.js`）：cookie 标记命中 + 页面级二次确认（小红书游客态也会种 `web_session`，须确认 `.login-btn` 登录按钮消失才算登录）。
+
 ### 离线验证（无需浏览器 / 外网）
 
 ```bash

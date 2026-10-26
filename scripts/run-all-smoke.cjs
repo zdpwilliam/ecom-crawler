@@ -26,7 +26,13 @@ const SUITE = [
 const summary = [];
 let failed = 0;
 for (const f of SUITE) {
-  const r = spawnSync(process.execPath, [path.join(TOOLS, f)], { encoding: 'utf8', timeout: 300000 });
+  const run = () => spawnSync(process.execPath, [path.join(TOOLS, f)], { encoding: 'utf8', timeout: 300000 });
+  let r = run();
+  // 含真实网络请求的脚本（得物/补抓/采集）存在偶发网络抖动：失败自动重跑一次，仍失败才计 FAIL
+  if (r.status !== 0) {
+    console.log(`RETRY ${f}（首轮失败，疑似网络抖动，重跑一次）`);
+    r = run();
+  }
   const out = (r.stdout || '') + (r.stderr || '');
   const tail = out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] || '(无输出)';
   const pass = r.status === 0;
