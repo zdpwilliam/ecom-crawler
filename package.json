@@ -1,0 +1,27 @@
+{
+  "name": "ecom-data-hub",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "可扩展的电商平台数据采集与展示平台：官方 API 优先 + 可插拔爬虫回退 + SQLite 存储 + 代理池 + 定时采集 + CSV/JSON 导出",
+  "scripts": {
+    "start": "node --experimental-sqlite server/index.js",
+    "collect": "node --experimental-sqlite scripts/run-collect.js",
+    "scheduler": "node --experimental-sqlite scripts/scheduler.js",
+    "export": "node --experimental-sqlite scripts/export-data.js",
+    "cookie": "node tools/cookie-tool.js",
+    "postinstall": "node tools/ensure-browser.js",
+    "test": "node scripts/run-all-smoke.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "fetch-socks": "^1.3.3",
+    "playwright": "^1.64.0",
+    "undici": "^8.11.2"
+  },
+  "optionalDependencies": {
+    "mongodb": "^6.21.0"
+  }
+}

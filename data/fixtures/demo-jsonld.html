@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <title>JSON-LD 结构化数据示例（无需选择器校准）</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "极简保温杯 500ml 不锈钢",
+    "sku": "NW-500",
+    "image": "https://img.demo/cup.jpg",
+    "brand": { "name": "NorthWind" },
+    "offers": {
+      "@type": "Offer",
+      "price": "129.90",
+      "priceCurrency": "CNY",
+      "availability": "https://schema.org/InStock",
+      "url": "https://item.demo/100002"
+    }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "无线蓝牙耳机 降噪版",
+    "sku": "YX-2025",
+    "brand": { "name": "云栖" },
+    "offers": { "@type": "Offer", "price": "459.00", "priceCurrency": "CNY", "availability": "https://schema.org/OutOfStock" }
+  }
+  </script>
+</head>
+<body><p>本页仅含 JSON-LD，无 class 化卡片，用于验证结构化数据解析分支。</p></body>
+</html>

@@ -1,0 +1,6 @@
+node_modules/
+# data/ 含登录 Cookie（敏感）、库存数据、运行日志——全部不入库；
+# 仅保留离线测试 fixtures（解析内核端到端验证依赖）
+data/*
+!data/fixtures/
+!data/fixtures/**
