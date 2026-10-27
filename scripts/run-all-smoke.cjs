@@ -9,6 +9,7 @@ const TOOLS = path.resolve(__dirname, '..', 'tools');
 // 顺序即历史轮次顺序：单元测试最前（最快、无网络），冒烟按轮次，含真实网络的放最后
 const SUITE = [
   'test-cookie-tool.mjs', // 单元：登录自动关闭决策（无网络，秒级）
+  'test-opencli-adapter.mjs', // 单元：OpenCLI 桥接归一化（离线，秒级；末条跑真实 opencli 命令）
   'smoke-new-ui.cjs',
   'smoke-round28.cjs',
   'smoke-round29.cjs',

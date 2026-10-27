@@ -3,6 +3,7 @@
 import { BaseAdapter } from './base.js';
 import { MockAdapter } from './mock.js';
 import { TaobaoTopAdapter } from './official/taobao-top.js';
+import { OpenCliAdapter, OPENCLI_CMDS } from './official/opencli-adapter.js';
 import { GenericScrapeAdapter } from './scrape/generic.js';
 import { DATA_TYPES } from '../types.js';
 
@@ -48,7 +49,7 @@ export function getScrapeAdapter(platformId) {
 
 /**
  * 取得某平台某数据类型的「主 + 备」适配器序列：
- * 官方 API 优先；若无官方实现或需回退，再尝试爬取（受合规闸门限制）。
+ * 官方 API 优先 → OpenCLI 桥接（复用本机 Chrome 登录态，2026-10-27 接入）→ 爬取（受合规闸门限制）。
  */
 export function resolveAdapters(platformId, dataType) {
   const p = byId[platformId];
@@ -56,6 +57,7 @@ export function resolveAdapters(platformId, dataType) {
   if (dataType === DATA_TYPES.CHAT) throw new Error('聊天功能已移除');
   const seq = [];
   if (p.official) seq.push({ strategy: 'official', factory: () => new p.official() });
+  if (OPENCLI_CMDS[platformId]) seq.push({ strategy: 'opencli', factory: () => new OpenCliAdapter({ platformId, name: p.name }) });
   if (p.scrape) seq.push({ strategy: 'scrape', factory: () => new p.scrape({ platformId, name: p.name }) });
   return seq;
 }

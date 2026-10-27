@@ -603,15 +603,20 @@ async function loadLoginStatus() {
             : '<span class="muted">无</span>';
         const statusCell = `<span class="badge ${loginBadgeCls(r.status)}"><span class="dot"></span>${esc(LOGIN_STATUS_TEXT[r.status] || r.status)}</span>`;
         // 所有平台都提供登录入口：即使「不需要登录」的平台，评论/问答等详情数据也常要求登录后才能拿到
-        const ops = `<button data-lgcheck="${esc(r.platform)}" style="padding:2px 10px">检测</button>
-             <button data-lgrelogin="${esc(r.platform)}" class="btn-ghost btn-sm" style="margin-top:4px">${r.count > 0 ? '🔑 重新登录' : '🔑 登录'}</button>
-             <button data-lgbrowser="${esc(r.platform)}" class="btn-ghost btn-sm" style="margin-top:4px" title="headless 读取提取浏览器档案的实时登录态，已登录则同步为采集用快照（约 10~40 秒）">🌐 浏览器态</button>`;
+        // 布局：第一行 [🔑登录 …… 检测]（两端对齐，检测在右），第二行 [🌐 当前浏览态]
+        const ops = `<div style="display:flex;flex-direction:column;gap:4px">
+             <div style="display:flex;gap:6px;align-items:center">
+               <button data-lgrelogin="${esc(r.platform)}" class="btn-ghost btn-sm">🔑 ${r.count > 0 ? '重新登录' : '登录'}</button>
+               <button data-lgcheck="${esc(r.platform)}" style="padding:2px 10px;margin-left:auto">检测</button>
+             </div>
+             <button data-lgbrowser="${esc(r.platform)}" class="btn-ghost btn-sm" title="headless 读取提取浏览器档案的实时登录态并弹窗展示（已登录则同步为采集用快照，约 10~40 秒）">🌐 当前浏览态</button>
+           </div>`;
         return `<tr>
         <td>${esc(r.platform)}</td><td>${need}</td><td>${cookie}</td>
         <td>${statusCell}</td>
         <td class="lg-detail" title="${esc(r.detail || '')}">${esc(r.detail || '')}</td>
         <td>${r.checkedAt ? timeCell(r.checkedAt) : '<span class="muted">—</span>'}</td>
-        <td style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">${ops}</td>
+        <td>${ops}</td>
       </tr>`;
       })
       .join('');
@@ -661,7 +666,7 @@ async function checkLoginUi(platform) {
   }
 }
 
-// 「🌐 浏览器态」：headless 读取提取浏览器档案中该平台的实时登录态（已登录则同步快照）
+// 「🌐 当前浏览态」：headless 读取提取浏览器档案中该平台的实时登录态，弹窗展示获取到的登录数据
 async function checkBrowserUi(platform) {
   const meta = $('#lgMeta');
   const btn = box_queryLoginBtn(platform, 'data-lgbrowser');
@@ -676,11 +681,37 @@ async function checkBrowserUi(platform) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ platform }),
     });
-    const textMap = { 'logged-in': '已登录（快照已同步）', guest: '游客态（档案内无登录 Cookie）', uncertain: '疑似登录但未确认', 'no-profile': '暂无浏览器档案（请先🔑登录）', unsupported: '该平台暂不支持浏览器态判定', error: '读取失败' };
-    meta.textContent = `${platform} 浏览器态：${textMap[r.status] || r.status}${r.detail ? ` · ${r.detail}` : ''}`;
+    const textMap = { 'logged-in': '已登录', guest: '游客态（档案内无登录 Cookie）', uncertain: '疑似登录但未确认', 'no-profile': '暂无浏览器档案（请先🔑登录）', unsupported: '该平台暂不支持浏览态判定', error: '读取失败' };
+    meta.textContent = `${platform} 当前浏览态：${textMap[r.status] || r.status}${r.detail ? ` · ${r.detail}` : ''}`;
+    // 弹窗展示获取到的登录数据（复用 Cookie 明细弹窗外壳）
+    const modal = $('#cookieModal');
+    $('#ckModalTitle').textContent = `当前浏览态（${platform}）`;
+    modal.hidden = false;
+    const body = $('#ckModalBody');
+    const cookies = Array.isArray(r.cookies) ? r.cookies : [];
+    ckModalData = cookies;
+    if (r.status === 'no-profile' || r.status === 'unsupported' || r.status === 'error') {
+      body.innerHTML = `<p class="count">${esc(r.detail || textMap[r.status] || '')}</p>`;
+    } else {
+      const rows = cookies
+        .map((c, i) => {
+          let exp = '会话';
+          if (c.expires != null && Number.isFinite(Number(c.expires)) && Number(c.expires) > 0) {
+            const d = new Date(Number(c.expires) * 1000);
+            exp = isNaN(d.getTime()) ? String(c.expires) : fmtTime(d.toISOString());
+          }
+          return `<tr><td>${i + 1}</td><td><code>${esc(c.name)}</code></td><td class="ck-val" title="${esc(c.value)}">${esc(String(c.value).slice(0, 26))}${String(c.value).length > 26 ? '…' : ''}</td><td>${esc(c.domain || '')}</td><td>${exp}</td></tr>`;
+        })
+        .join('');
+      body.innerHTML =
+        `<p class="count">档案内实时读取到 <b>${cookies.length}</b> 条 Cookie ｜ 判定：<b>${esc(textMap[r.status] || r.status)}</b>${r.saved ? ' ｜ <b>已同步为采集用快照</b>' : ''}<br/><span class="muted">${esc(r.detail || '')}</span></p>` +
+        (cookies.length
+          ? `<table><thead><tr><th>#</th><th>名称</th><th>值（悬停看全文）</th><th>域</th><th>有效期</th></tr></thead><tbody>${rows}</tbody></table>`
+          : '');
+    }
     await loadLoginStatus();
   } catch (e) {
-    meta.textContent = `浏览器态读取失败：${e.message}`;
+    meta.textContent = `浏览态读取失败：${e.message}`;
     await loadLoginStatus();
   } finally {
     if (btn) btn.disabled = false;
@@ -840,6 +871,7 @@ async function runTestUi() {
             <b>${testStepIcon(s)} ${esc(s.label)}</b>
             <span class="badge ${s.ok ? 'ok' : 'off'}">${s.ok ? '通过' : '未通过'}</span>
             ${s.count ? `<span class="badge">${s.count} 条</span>` : ''}
+            ${s.saved ? `<span class="badge ok">入库 ${s.saved}</span>` : ''}
             ${s.ms ? `<span class="badge">${(s.ms / 1000).toFixed(1)}s</span>` : ''}
             <button class="btn-ghost" data-diag="${esc(s.key)}" data-url="${esc(s.url)}" style="padding:2px 10px;margin-left:auto">🔬 字段诊断</button>
           </p>
@@ -851,8 +883,9 @@ async function runTestUi() {
       })
       .join('\n');
     const pass = r.steps.filter((s) => s.ok).length;
+    const savedNote = (r.savedTotal || 0) > 0 ? `通过步骤的数据已自动入库 ${r.savedTotal} 条（按链接去重）` : '本次测试无入库数据（未通过或为空结果）';
     body.innerHTML =
-      `<p class="count" style="margin:0 0 8px">测试目标：${esc(r.target || '—')} ｜ 通过 ${pass}/${r.steps.length} 项（测试数据不落库）</p>${blocks}`;
+      `<p class="count" style="margin:0 0 8px">测试目标：${esc(r.target || '—')} ｜ 通过 ${pass}/${r.steps.length} 项 ｜ ${esc(savedNote)}</p>${blocks}`;
     // 每步「字段诊断」：把该步最终链接喂给诊断引擎，就地展示字段命中表
     body.querySelectorAll('[data-diag]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -1233,6 +1266,7 @@ async function loadSettingsUi() {
   }
 }
 async function saveSettingsUi() {
+  const btn = $('#saveSettings');
   const body = {
     delayMin: $('#setDelayMin').value,
     delayMax: $('#setDelayMax').value,
@@ -1244,14 +1278,21 @@ async function saveSettingsUi() {
     fpMode: $('#fpMode') ? $('#fpMode').value : undefined,
   };
   try {
+    btn.disabled = true;
+    $('#settingsResult').textContent = '保存中…';
     await apiJson('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     await loadSettingsUi();
+    // 在「当前设置」前追加显式保存成功标记，避免看起来像没反应
+    const el = $('#settingsResult');
+    el.textContent = `✅ 已保存 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })} ｜ ${el.textContent}`;
   } catch (e) {
     $('#settingsResult').textContent = '保存失败：' + e.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 

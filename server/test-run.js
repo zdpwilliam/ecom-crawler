@@ -1,9 +1,11 @@
 // 一键测试（采集前体检）：按当前工作台配置（平台/数据类型/查询词）发真实请求，
 // product 类型走「列表 → 详情 → 评价 → 问答」全链路；review/qa 只测对应单步。
 // 每步返回：最终请求链接 / 运行状态说明 / 响应内容预览 / 提取后的结构化数据。
-// 测试数据不落库（直接调适配器，不走 collectors 入库）。
+// 2026-10-27：测试成功的数据默认入库（addRecords 按主键去重，重复测试不产生重复记录）；
+// 可传 persist=false 关闭。入库失败不影响测试结果展示（计 saved=0 并注明原因）。
 import { getScrapeAdapter } from './adapters/registry.js';
 import { SCRAPE_CONFIG } from './adapters/scrape/config.js';
+import { addRecords } from './storage.js';
 
 const PREVIEW_MAX = 2600; // 单步返回内容预览上限（字符）
 
@@ -53,20 +55,31 @@ function detailPageUrl(cfg, target) {
   return '';
 }
 
+/** 尝试入库一批记录；失败不抛（返回 0），避免影响测试结果展示。 */
+async function trySave(type, rows) {
+  if (!rows || !rows.length) return 0;
+  try {
+    return await addRecords(type, rows);
+  } catch (e) {
+    console.warn('[test-run] 入库失败：', type, e.message);
+    return 0;
+  }
+}
+
 /**
  * 运行一键测试。
- * @param {{platform:string, dataType?:string, query?:string, itemId?:string}} opts
- * @returns {Promise<{platform:string, dataType:string, steps:Array, target:string}>}
- * step: { key, label, ok, ms, count, url, detail, responseText, dataText }
+ * @param {{platform:string, dataType?:string, query?:string, itemId?:string, persist?:boolean}} opts
+ * @returns {Promise<{platform:string, dataType:string, steps:Array, target:string, savedTotal:number}>}
+ * step: { key, label, ok, ms, count, saved, url, detail, responseText, dataText }
  */
-export async function runTest({ platform, dataType = 'product', query = '手机', itemId = '' }) {
+export async function runTest({ platform, dataType = 'product', query = '手机', itemId = '', persist = true }) {
   const adapter = getScrapeAdapter(platform);
   if (!adapter) throw new Error(`未知平台：${platform}`);
   const cfg = SCRAPE_CONFIG[platform] || {};
   const steps = [];
 
   const step = (key, label) => {
-    const s = { key, label, ok: false, ms: 0, count: 0, url: '', detail: '', responseText: '', dataText: '' };
+    const s = { key, label, ok: false, ms: 0, count: 0, saved: 0, url: '', detail: '', responseText: '', dataText: '' };
     steps.push(s);
     return s;
   };
@@ -78,7 +91,7 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
     s.url = detailPageUrl(cfg, target) || String(target).slice(0, 120);
     if (!target) {
       s.detail = '跳过：未填写商品链接或 ItemId';
-      return { platform, dataType, target: '', steps };
+      return { platform, dataType, target: '', steps, savedTotal: 0 };
     }
     const t0 = Date.now();
     try {
@@ -90,7 +103,8 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
       s.ok = rows.length > 0;
       s.ms = Date.now() - t0;
       s.count = rows.length;
-      s.detail = rows.length ? `解析到 ${rows.length} 条${dataType === 'review' ? '评价' : '问答'}` : '页面无公开数据或选择器未命中';
+      s.saved = persist ? await trySave(dataType, rows) : 0;
+      s.detail = rows.length ? `解析到 ${rows.length} 条${dataType === 'review' ? '评价' : '问答'}${s.saved ? `，已入库 ${s.saved} 条` : ''}` : '页面无公开数据或选择器未命中';
       s.responseText = rows.length ? preview(rows.slice(0, 2)) : '';
       s.dataText = rows.length ? preview(rows.map((r) => (
         dataType === 'review'
@@ -101,7 +115,8 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
       s.ms = Date.now() - t0;
       s.detail = String(e.message || e).slice(0, 400);
     }
-    return { platform, dataType, target, steps };
+    const savedTotal = steps.reduce((n, x) => n + (x.saved || 0), 0);
+    return { platform, dataType, target, steps, savedTotal };
   }
 
   // ===== product：列表 → 详情 → 评价 → 问答 =====
@@ -118,8 +133,9 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
       s1.ok = products.length > 0;
       s1.ms = Date.now() - t0;
       s1.count = products.length;
+      s1.saved = persist ? await trySave('product', products) : 0;
       s1.detail = products.length
-        ? `解析到 ${products.length} 条商品${Array.isArray(raw) ? '' : raw.reviews?.length ? `，附带评论 ${raw.reviews.length} 条` : ''}`
+        ? `解析到 ${products.length} 条商品${s1.saved ? `，已入库 ${s1.saved} 条` : ''}${Array.isArray(raw) ? '' : raw.reviews?.length ? `，附带评论 ${raw.reviews.length} 条` : ''}`
         : '返回 0 条（可能需登录态或被风控）';
       s1.responseText = products.length ? preview(products.map(summarizeProduct), 3) : '';
       s1.dataText = s1.responseText;
@@ -149,9 +165,15 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
         s2.ok = !!(d.spu || skuCount || (d.reviews || []).length || (d.qa || []).length);
         s2.ms = Date.now() - t0;
         s2.count = skuCount;
+        // 详情步带出的评论/问答也入库（review/qa 记录自带 itemId）
+        const sideSaved = persist
+          ? (await trySave('review', d.reviews || [])) + (await trySave('qa', d.qa || []))
+          : 0;
+        s2.saved = sideSaved;
         s2.detail =
           `SPU：${d.spu ? '✓ ' + String(d.spu.title || d.spu.brandName || '').slice(0, 30) : '✗'} ｜ SKU/规格：${skuCount} 条` +
-          ` ｜ 评论：${(d.reviews || []).length} 条 ｜ 问答：${(d.qa || []).length} 条`;
+          ` ｜ 评论：${(d.reviews || []).length} 条 ｜ 问答：${(d.qa || []).length} 条` +
+          (sideSaved ? `（已入库 ${sideSaved} 条评论/问答）` : '');
         s2.responseText = preview({ spu: d.spu, skus: (d.skus || []).slice(0, 5) }, 1);
         s2.dataText = d.spu || skuCount
           ? preview({ spu: d.spu, skuCount, 回填字段: { brand: d.spu?.brandName || d.spu?.brand, category: d.spu?.categoryName || d.spu?.category, price: d.spu?.price } }, 1)
@@ -180,7 +202,8 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
         s.ok = rows.length > 0;
         s.ms = Date.now() - t0;
         s.count = rows.length;
-        s.detail = rows.length ? `解析到 ${rows.length} 条评价` : '页面无公开评论或选择器未命中';
+        s.saved = persist ? await trySave('review', rows) : 0;
+        s.detail = rows.length ? `解析到 ${rows.length} 条评价${s.saved ? `，已入库 ${s.saved} 条` : ''}` : '页面无公开评论或选择器未命中';
         s.responseText = rows.length ? preview(rows.slice(0, 2)) : '';
         s.dataText = rows.length ? preview(rows.map((r) => ({ rating: r.rating, content: r.content, author: r.author || r.authorMasked })), 2) : '';
       } catch (e) {
@@ -209,7 +232,8 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
         s.ok = rows.length > 0;
         s.ms = Date.now() - t0;
         s.count = rows.length;
-        s.detail = rows.length ? `解析到 ${rows.length} 条问答` : '页面无公开问答或选择器未命中';
+        s.saved = persist ? await trySave('qa', rows) : 0;
+        s.detail = rows.length ? `解析到 ${rows.length} 条问答${s.saved ? `，已入库 ${s.saved} 条` : ''}` : '页面无公开问答或选择器未命中';
         s.responseText = rows.length ? preview(rows.slice(0, 2)) : '';
         s.dataText = rows.length ? preview(rows.map((r) => ({ q: r.question, a: r.answer })), 2) : '';
       } catch (e) {
@@ -219,5 +243,6 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
     }
   }
 
-  return { platform, dataType, query, target: targetUrl || target, steps };
+  const savedTotal = steps.reduce((n, x) => n + (x.saved || 0), 0);
+  return { platform, dataType, query, target: targetUrl || target, steps, savedTotal };
 }

@@ -323,13 +323,15 @@ server/
   export.js             CSV / JSON 导出
   proxy-pool.js         代理池（轮换 + 健康度冷却）
   scheduler.js          定时采集引擎
-  collectors.js         编排：官方优先→爬取回退；关联评论/问答落库
+  collectors.js         编排：官方→OpenCLI→爬取 三级回退；关联评论/问答落库
   index.js              HTTP 服务 + API
+  test-run.js           一键测试（列表→详情→评价→问答；成功数据自动入库）
   adapters/
     base.js             适配器基类（含 guard 安全闸门）
     registry.js         平台注册表（可扩展性核心）
     mock.js             无凭证可跑通的 mock 适配层
     official/taobao-top.js   淘宝 TOP 官方API（真实签名请求+字段映射；凭证走设置页或 TOP_APP_KEY/SECRET/SESSION 环境变量）
+    official/opencli-adapter.js  OpenCLI 桥接：复用本机 Chrome 登录态采集（taobao/jd/xianyu/amazon；需 @jackwener/opencli + Browser Bridge 扩展）
     scrape/generic.js        真实爬取引擎(Playwright/fetch + 多策略解析 + 详情页评论/问答)
     scrape/config.js         各平台选择器 + UA池 + 网络参数 + 代理/详情/问答配置
 tools/

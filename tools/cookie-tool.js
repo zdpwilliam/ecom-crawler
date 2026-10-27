@@ -212,7 +212,7 @@ async function probe(platform, opts) {
       await page.waitForTimeout(5000);
       pageConfirmed = await confirmFn(page).catch(() => null);
     }
-    const base = { platform, cookieCount: cookies.length, markerHit, pageConfirmed };
+    const base = { platform, cookieCount: cookies.length, markerHit, pageConfirmed, cookies: cookies.map((c) => ({ name: c.name, value: c.value, domain: c.domain, expires: c.expires })) };
     if (shouldAutoClose(markerHit, pageConfirmed)) {
       fs.mkdirSync(COOKIES_DIR, { recursive: true });
       fs.writeFileSync(path.join(COOKIES_DIR, `${platform}.json`), JSON.stringify(cookies, null, 2));
