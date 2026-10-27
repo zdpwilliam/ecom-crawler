@@ -11,9 +11,9 @@ import { pickProxy, getProxyDispatcher } from '../../proxy-pool.ts';
 import { apiProductsFromBodies, mapApiProducts } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
+import { COOKIES_DIR } from '../../paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const COOKIES_DIR = path.resolve(__dirname, '..', '..', '..', 'data', 'cookies');
+
 
 // 唯品会 PC 前端固定公共 api_key（页面 JS 内置，非私密凭证）
 const API_KEY = '70f71280d5d547b2a7bb370a529aeea1';

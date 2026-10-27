@@ -14,11 +14,10 @@ import { fetchVipProducts } from './adapters/scrape/vip-api.ts';
 import { PLATFORMS } from './adapters/registry.ts';
 import { loadSettings } from './settings.ts';
 import { runLog } from './runlog.ts';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.resolve(__dirname, '..', 'data');
-const COOKIES_DIR = path.resolve(DATA_DIR, 'cookies');
-const STATUS_FILE = path.resolve(DATA_DIR, 'login-status.json');
+const COOKIES_DIR = path.join(DATA_DIR, 'cookies');
+const STATUS_FILE = path.join(DATA_DIR, 'login-status.json');
 
 // 平台是否需要登录（与前端 PLATFORM_META 口径一致；此处为服务端单一来源）
 export const NEED_LOGIN = {

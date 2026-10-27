@@ -5,7 +5,7 @@
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
-const TOOLS = path.resolve(__dirname, '..', 'tools');
+const TESTS = path.resolve(__dirname, '..', 'tests');
 // 顺序即历史轮次顺序：单元测试最前（最快、无网络），冒烟按轮次，含真实网络的放最后
 const SUITE = [
   'test-cookie-tool.mjs', // 单元：登录自动关闭决策（无网络，秒级）
@@ -27,7 +27,7 @@ const SUITE = [
 const summary = [];
 let failed = 0;
 for (const f of SUITE) {
-  const run = () => spawnSync(process.execPath, [path.join(TOOLS, f)], { encoding: 'utf8', timeout: 300000 });
+  const run = () => spawnSync(process.execPath, [path.join(TESTS, f)], { encoding: 'utf8', timeout: 300000 });
   let r = run();
   // 含真实网络请求的脚本（得物/补抓/采集）存在偶发网络抖动：失败最多重跑 2 次，仍失败才计 FAIL
   for (let attempt = 2; attempt <= 3 && r.status !== 0; attempt++) {

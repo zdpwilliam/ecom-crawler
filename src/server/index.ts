@@ -19,11 +19,8 @@ import { GenericScrapeAdapter, loadHtml } from './adapters/scrape/generic.ts';
 import { getScrapeAdapter } from './adapters/registry.ts';
 import { getStatus, checkLogin, checkLoginCached, checkAll, saveCookieFile, startLoginCheckScheduler } from './login-check.ts';
 import { runTest } from './test-run.ts';
+import { PROJECT_ROOT, PUBLIC_DIR as PUBLIC, DATA_DIR, COOKIES_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC = path.resolve(__dirname, '..', 'public');
-const DATA_DIR = path.resolve(__dirname, '..', 'data');
-const COOKIES_DIR = path.resolve(DATA_DIR, 'cookies');
 const PORT = process.env.PORT || 4311;
 
 // 启动时套用持久化设置：先定存储后端，再套爬虫参数
@@ -36,7 +33,7 @@ await loadStore();
 // 启动前自检：浏览器缺失则自动下载（仅一次），确保开箱即用。
 (async () => {
   try {
-    const { ensureBrowser } = await import('../tools/ensure-browser.ts');
+    const { ensureBrowser } = await import('../../tools/ensure-browser.ts');
     await ensureBrowser();
   } catch {
     /* 自检失败不阻塞启动 */
@@ -267,7 +264,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const r: any = await new Promise<any>((resolve) => {
           const child = spawn(process.execPath, ['tools/cookie-tool.ts', 'probe', '--platform', platform], {
-            cwd: path.resolve(__dirname, '..'),
+            cwd: PROJECT_ROOT,
             timeout: 90000,
           });
           let out = '';
@@ -492,7 +489,7 @@ const server = http.createServer(async (req, res) => {
       const logFile = path.resolve(DATA_DIR, `cookie-extract-${platform}.log`);
       const out = fs.openSync(logFile, 'a');
       const child = spawn(process.execPath, ['tools/cookie-tool.ts', 'extract', '--platform', platform, '--timeout', '600'], {
-        cwd: path.resolve(__dirname, '..'),
+        cwd: PROJECT_ROOT,
         stdio: ['ignore', out, out],
         detached: true,
       });

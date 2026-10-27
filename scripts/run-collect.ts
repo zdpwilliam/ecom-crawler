@@ -2,9 +2,9 @@
 // 带详情（评论+问答）：--withDetails [--detailLimit 3] [--detailFixture data/fixtures/demo-detail.html]
 // 校准诊断：node scripts/run-collect.js --platform jd --type product --verify --fixture data/fixtures/demo-products.html
 // 问答：node scripts/run-collect.js --platform jd --type qa --itemId 100001 --strategy scrape --fixture data/fixtures/demo-detail.html
-import { runCollection } from '../server/collectors.ts';
-import { loadStore } from '../server/storage.ts';
-import { GenericScrapeAdapter } from '../server/adapters/scrape/generic.ts';
+import { runCollection } from '../src/server/collectors.ts';
+import { loadStore } from '../src/server/storage.ts';
+import { GenericScrapeAdapter } from '../src/server/adapters/scrape/generic.ts';
 
 await loadStore();
 

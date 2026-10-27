@@ -11,9 +11,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickProxy } from './proxy-pool.ts';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXTRA_FILE = path.resolve(__dirname, '..', 'data', 'fingerprints-extra.json');
+const EXTRA_FILE = path.join(DATA_DIR, 'fingerprints-extra.json');
 
 const rint = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];

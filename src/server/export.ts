@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query } from './storage.ts';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXPORT_DIR = path.resolve(__dirname, '..', 'data', 'exports');
+const EXPORT_DIR = path.join(DATA_DIR, 'exports');
 
 // 各类型导出列（驼峰，与 API 一致）
 const COLUMNS = {

@@ -1,19 +1,19 @@
 {
   "name": "ecom-data-hub",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "可扩展的电商平台数据采集与展示平台：官方 API 优先 + 可插拔爬虫回退 + SQLite 存储 + 代理池 + 定时采集 + CSV/JSON 导出",
   "scripts": {
-    "start": "node --experimental-sqlite server/index.ts",
+    "start": "node --experimental-sqlite src/server/index.ts",
     "collect": "node --experimental-sqlite scripts/run-collect.ts",
     "scheduler": "node --experimental-sqlite scripts/scheduler.ts",
     "export": "node --experimental-sqlite scripts/export-data.ts",
     "cookie": "node tools/cookie-tool.ts",
     "postinstall": "node tools/ensure-browser.ts",
     "test": "node scripts/run-all-smoke.cjs",
-    "typecheck": "tsc --noEmit",
-    "build:ui": "esbuild src/ui/app.ts --bundle --format=iife --target=es2022 --outfile=public/app.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "build:ui": "esbuild src/client/main.tsx --bundle --format=iife --target=es2022 --jsx=automatic --outfile=public/app.js",
     "pretest": "npm run build:ui"
   },
   "engines": {
@@ -22,6 +22,8 @@
   "dependencies": {
     "fetch-socks": "^1.3.3",
     "playwright": "^1.64.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "undici": "^8.11.2"
   },
   "optionalDependencies": {
@@ -29,6 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "esbuild": "^0.28.2",
     "typescript": "5.9"
   }

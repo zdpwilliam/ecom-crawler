@@ -23,14 +23,14 @@
     "useUnknownInCatchVariables": false
   },
   "include": [
-    "server/**/*.ts",
-    "scripts/**/*.ts",
-    "tools/*.ts",
-    "src/ui/**/*.ts"
+    "src/server/**/*.ts",
+    "scripts/*.ts",
+    "tools/*.ts"
   ],
   "exclude": [
     "node_modules",
     "data",
-    ".git"
+    ".git",
+    "src/client"
   ]
 }

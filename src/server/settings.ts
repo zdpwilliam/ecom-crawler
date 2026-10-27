@@ -8,9 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NETWORK } from './adapters/scrape/config.ts';
 import { setFingerprintMode } from './fingerprint.ts';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SETTINGS_FILE = path.resolve(__dirname, '..', 'data', 'settings.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 export const DEFAULTS = Object.freeze({
   storageBackend: 'sqlite', // sqlite | mongodb

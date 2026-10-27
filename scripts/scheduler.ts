@@ -1,7 +1,7 @@
 // 独立运行定时采集调度器（也可随服务自动启动）。
 // node scripts/scheduler.js
-import { loadStore, listJobs } from '../server/storage.ts';
-import { startScheduler, stopScheduler, runJob } from '../server/scheduler.ts';
+import { loadStore, listJobs } from '../src/server/storage.ts';
+import { startScheduler, stopScheduler, runJob } from '../src/server/scheduler.ts';
 
 await loadStore();
 

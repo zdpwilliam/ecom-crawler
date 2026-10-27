@@ -16,9 +16,9 @@ import { isStopped } from '../../stop-flag.ts';
 import { apiProductsFromBodies, mapApiProducts, spuSkuFromBodies } from './api-parse.ts';
 // 代理请求统一用 npm undici 的 fetch（内置 fetch 与 npm undici v7 dispatcher 不兼容）
 import { fetch as undiciFetch } from 'undici';
+import { DATA_DIR } from '../../paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.resolve(__dirname, '..', '..', '..', 'data');
+
 
 // ---------- 轻量 HTML 解析（无第三方依赖） ----------
 

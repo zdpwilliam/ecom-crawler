@@ -6,9 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.resolve(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'ecom.db');
 const JSON_LEGACY = path.join(DATA_DIR, 'store.json');
 

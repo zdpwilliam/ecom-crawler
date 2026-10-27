@@ -11,15 +11,15 @@ function check(name, ok) {
 
 (async () => {
   // ---------- 1. 服务端单元：配置与档案强制（离线导入模块） ----------
-  const cfgMod = await import('file://' + process.cwd().replace(/\\/g, '/') + '/server/adapters/scrape/config.ts');
+  const cfgMod = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/adapters/scrape/config.ts');
   const dewu = cfgMod.SCRAPE_CONFIG.dewu;
   check('dewu 配置 mobileOnly=true', dewu && dewu.mobileOnly === true);
   check('dewu noProductHint 说明无网页商城+验证码风控', typeof dewu.noProductHint === 'string' && dewu.noProductHint.includes('没有网页商城') && dewu.noProductHint.includes('485'));
   check('dewu detailUrl 构造 H5 详情链接', /^https:\/\/www\.dewu\.com\/product-detail\.html\?spuId=\d+$/.test(dewu.detailUrl('123456')));
   check('其他平台无 mobileOnly（vip/suning/taobao）', !cfgMod.SCRAPE_CONFIG.vip?.mobileOnly && !cfgMod.SCRAPE_CONFIG.suning?.mobileOnly && !cfgMod.SCRAPE_CONFIG.taobao?.mobileOnly);
 
-  const fp = await import('file://' + process.cwd().replace(/\\/g, '/') + '/server/fingerprint.ts');
-  const gen = await import('file://' + process.cwd().replace(/\\/g, '/') + '/server/adapters/scrape/generic.ts');
+  const fp = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/fingerprint.ts');
+  const gen = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/adapters/scrape/generic.ts');
 
   // 全局端型 mixed：dewu 必须全部强制为移动档案
   fp.setFingerprintMode('mixed');

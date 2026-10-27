@@ -12,11 +12,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const DATA_DIR = path.resolve(__dirname, '..', 'data');
-export const EXPORT_DIR = path.resolve(DATA_DIR, 'exports');
-export const COOKIES_DIR = path.resolve(DATA_DIR, 'cookies');
+export const EXPORT_DIR = path.join(DATA_DIR, 'exports');
+export const COOKIES_DIR = path.join(DATA_DIR, 'cookies');
 export const PROXIES_FILE = path.resolve(DATA_DIR, 'proxies.txt');
 
 let backend = null;

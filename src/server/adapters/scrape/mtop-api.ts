@@ -10,6 +10,7 @@ import { fetch as undiciFetch } from 'undici';
 import { mapApiProducts, apiProductsFromBodies } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
+import { COOKIES_DIR } from '../../paths.ts';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const APP_KEY = '12574478';
@@ -17,7 +18,7 @@ const APP_KEY = '12574478';
 const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
 
 function loadCookies(platformId, log) {
-  const file = path.join(process.cwd(), 'data', 'cookies', `${platformId}.json`);
+  const file = path.join(COOKIES_DIR, `${platformId}.json`);
   if (!fs.existsSync(file)) return null;
   try {
     const arr = JSON.parse(fs.readFileSync(file, 'utf8'));

@@ -1,8 +1,8 @@
 // 命令行导出：node scripts/export-data.js --type product --format csv --platform jd
 // 支持类型：product / review / qa / chat；格式：json(默认) / csv
 // 文件保存到 data/exports/。
-import { loadStore } from '../server/storage.ts';
-import { exportData } from '../server/export.ts';
+import { loadStore } from '../src/server/storage.ts';
+import { exportData } from '../src/server/export.ts';
 
 await loadStore();
 

@@ -6,9 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // 统一用 npm undici 的 fetch：Node 内置 fetch 与 npm undici v7 的 dispatcher 跨实例不兼容（报 UND_ERR_INVALID_ARG）
 import { fetch as undiciFetch } from 'undici';
+import { DATA_DIR } from './paths.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROXIES_FILE = path.resolve(__dirname, '..', 'data', 'proxies.txt');
+const PROXIES_FILE = path.join(DATA_DIR, 'proxies.txt');
 
 let pool = [];
 let cursor = -1;
