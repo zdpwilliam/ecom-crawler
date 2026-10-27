@@ -21,7 +21,7 @@
 - **自适应解析（对抗改版失明）**：成功采集时记录商品卡片「结构指纹」快照（`data/adaptive-selectors.json`）；选择器失配时按快照相似度在重复容器簇里重定位，成功则告警并更新快照。
 - **代理池自动轮换**：从 `data/proxies.txt` 或 `CRAWL_PROXY_POOL` 载入代理，轮询分配，按健康度自动剔除/冷却，请求失败自动切下一个。
 - **定时采集**：任务存于数据库，按周期自动运行并写运行记录；仪表盘可增删/手动触发。
-- **爬虫运行时设置**：随机延迟区间 / 超时 / 重试 / 渲染等待 / Playwright 开关 / 指纹随机化开关，仪表盘修改后**立即对后续每次调用生效**，持久化到 `data/settings.tson`。重试等待同样按设置的延迟档位随机停顿（日志会显示「重试等待 Xs」），不再使用硬编码退避。
+- **爬虫运行时设置**：随机延迟区间 / 超时 / 重试 / 渲染等待 / Playwright 开关 / 指纹随机化开关，仪表盘修改后**立即对后续每次调用生效**，持久化到 `data/settings.json`。重试等待同样按设置的延迟档位随机停顿（日志会显示「重试等待 Xs」），不再使用硬编码退避。
 - **字段提取诊断**：在线 URL 诊断在「一键测试」弹框内（每步结果旁「🔬字段诊断」）；离线诊断把目标页另存为 HTML 后在仪表盘直接**选文件上传**（或高级模式填服务器路径），逐字段报告命中数与样例（`--verify` 的可视化版）。
 - **Cookie 提取小工具**：`tools/cookie-tool.ts` 弹出真实浏览器，登录后回车即导出登录态到 `data/cookies/<平台>.json`，采集时自动注入（绕过登录墙）。
 - **CSV / JSON 导出**：所有数据类型均支持 CSV 与 JSON 两种格式，一键下载到本地。
@@ -172,7 +172,7 @@ echo "http://user:pass@host:port" >> data/proxies.txt
 
 ## 爬虫运行时设置（每次调用生效）
 
-仪表盘「爬虫设置」面板可调：随机延迟 min/max、单页超时、重试次数、渲染等待、Playwright 开关、指纹随机化开关。保存后**立即生效**（无需重启），并持久化到 `data/settings.tson`。等价 API：`GET/POST /api/settings`。
+仪表盘「爬虫设置」面板可调：随机延迟 min/max、单页超时、重试次数、渲染等待、Playwright 开关、指纹随机化开关。保存后**立即生效**（无需重启），并持久化到 `data/settings.json`。等价 API：`GET/POST /api/settings`。
 
 **全局节流（防封号）**：所有真实网络请求之间强制间隔 `delayMin~delayMax` 的随机档位（默认 2~6 秒），运行日志可见「节流等待 Xs」。要更保守就调大区间（如 5~15 秒）；代价是采集更慢。节流是**跨模块单例计时**（`config.ts` 的 `netThrottle`）：直连接口（vip/jd/亚马逊/苏宁/华为/mtop）与浏览器页面加载共用同一个闸口，因此「rank→list」「直连失败→浏览器回退」「详情页→详情页」等跨通道切换同样被隔开——新增请求出口时必须在发起 fetch/goto 前调用 `await netThrottle(log)`。
 
@@ -248,7 +248,7 @@ RANDOMIZE_FINGERPRINT=false npm start
 
 ## 本地 MongoDB 文档数据库后端
 
-默认用 SQLite（零依赖）。切换 MongoDB **直接在仪表盘「存储管理」面板点「切换到 MongoDB」即可**（立即生效、记忆到 `data/settings.tson`，无需改环境变量或重启）；也可用环境变量：
+默认用 SQLite（零依赖）。切换 MongoDB **直接在仪表盘「存储管理」面板点「切换到 MongoDB」即可**（立即生效、记忆到 `data/settings.json`，无需改环境变量或重启）；也可用环境变量：
 
 ```bash
 # 1. 安装依赖（mongodb / undici 均已在 package.json，npm install 自动装）

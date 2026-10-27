@@ -94,7 +94,7 @@
 > **实施状态（2026-10-27 更新）**：P0 全部 3 项与 P1 全部 3 项已完成落地——
 > P0-1 会话池 `src/server/session-pool.ts`（三元绑定 + 登录态粘性）、P0-2 `src/server/http-client.ts`（impit TLS 伪装，全直连通道 + 探针接入）、P0-3 `classifyBan()` 语义化（session-expired/ip-banned/challenge/soft-block 四类处置）；
 > P1-4 `src/server/fp-inject.ts` 渲染层指纹注入 + Patchright 自动探测（`npm i patchright` 即启用）、P1-5 `src/server/adapters/scrape/adaptive.ts` 快照重定位（含 noProductHint 平台跳过与误定位护栏）、P1-6 指纹池统计加权采样（FAMILY_WEIGHTS）。
-> 测试：`tests/test-session-pool.mjs` 单元 17 项 + 全量冒烟 15 套通过。
+> 测试：`tests/test-session-pool.mjs` 单元 17 项 + 全量冒烟 16 套通过。
 
 ### P0（高收益低成本，建议尽快做）
 
