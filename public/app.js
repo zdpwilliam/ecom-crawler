@@ -26313,10 +26313,32 @@ ${r.login?.detail || ""}`
     const [diagRunning, setDiagRunning] = (0, import_react7.useState)(false);
     const [diagResult, setDiagResult] = (0, import_react7.useState)(null);
     const [diagError, setDiagError] = (0, import_react7.useState)("");
+    const [diagLogOpen, setDiagLogOpen] = (0, import_react7.useState)(false);
+    const [diagLogLines, setDiagLogLines] = (0, import_react7.useState)([]);
+    const diagLogLast = (0, import_react7.useRef)(-1);
+    const diagLogTimer = (0, import_react7.useRef)(null);
+    async function pullDiagLogs() {
+      try {
+        const d = await apiJson(`/api/logs?since=${diagLogLast.current}`);
+        if (d.lines?.length) setDiagLogLines((ls) => [...ls, ...d.lines.map((l) => `[${l.t}] ${l.msg}`)]);
+        diagLogLast.current = d.last;
+      } catch {
+      }
+    }
     async function runTechDiag() {
       setDiagRunning(true);
       setDiagError("");
       setDiagResult(null);
+      setDiagLogOpen(true);
+      setDiagLogLines([]);
+      try {
+        const cur = await apiJson("/api/logs");
+        diagLogLast.current = cur.last ?? -1;
+      } catch {
+        diagLogLast.current = -1;
+      }
+      clearInterval(diagLogTimer.current);
+      diagLogTimer.current = setInterval(pullDiagLogs, 1e3);
       try {
         const r = await apiJson("/api/tech-diagnose", {
           method: "POST",
@@ -26327,6 +26349,8 @@ ${r.login?.detail || ""}`
       } catch (e) {
         setDiagError("\u8BCA\u65AD\u5931\u8D25\uFF1A" + e.message);
       } finally {
+        clearInterval(diagLogTimer.current);
+        setTimeout(pullDiagLogs, 1200);
         setDiagRunning(false);
       }
     }
@@ -26723,7 +26747,9 @@ ${sum}
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u662F\u5426\u5DF2\u4FDD\u5B58\u767B\u5F55\u4FE1\u606F" }),
           "\u3001\u4EE5\u53CA\u767B\u5F55\u6001",
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u662F\u5426\u771F\u5B9E\u6709\u6548" }),
-          "\uFF08\u7528\u5DF2\u4FDD\u5B58 Cookie \u53D1\u4E00\u6B21\u771F\u5B9E\u8BF7\u6C42\u9A8C\u8BC1\uFF1B\u65E0\u63A2\u9488\u7684\u5E73\u53F0\u6309 Cookie \u6709\u6548\u671F\u63A8\u65AD\uFF09\u3002\u91C7\u96C6\u4F1A\u81EA\u52A8\u6CE8\u5165\u6709\u6548\u767B\u5F55\u6001\u3002"
+          "\uFF08\u7528\u5DF2\u4FDD\u5B58 Cookie \u53D1\u4E00\u6B21\u771F\u5B9E\u8BF7\u6C42\u9A8C\u8BC1\uFF1B\u65E0\u63A2\u9488\u7684\u5E73\u53F0\u6309 Cookie \u6709\u6548\u671F\u63A8\u65AD\uFF09\u3002\u91C7\u96C6\u4F1A\u81EA\u52A8\u6CE8\u5165\u6709\u6548\u767B\u5F55\u6001\u3002",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u300C\u4E0D\u9700\u8981\u300D\u767B\u5F55\u7684\u5E73\u53F0\u540C\u6837\u53EF\u4EE5\u8BBE\u7F6E\u767B\u5F55\u4FE1\u606F" }),
+          "\u2014\u2014\u90E8\u5206\u8BC4\u8BBA/\u95EE\u7B54\u7B49\u6570\u636E\u767B\u5F55\u540E\u624D\u53EF\u89C1\u3002"
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { id: "lgMeta", className: "kv", children: lgMeta }),
@@ -26745,7 +26771,10 @@ ${sum}
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u64CD\u4F5C" })
           ] }) }),
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: rows.map((r) => {
-            const need = r.needLogin === "\u5FC5\u9700" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { style: { color: "#9a3412" }, children: "\u5FC5\u9700" }) : r.needLogin === "\u63A8\u8350" ? "\u63A8\u8350" : "\u4E0D\u9700\u8981";
+            const need = r.needLogin === "\u5FC5\u9700" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { style: { color: "#9a3412" }, children: "\u5FC5\u9700" }) : r.needLogin === "\u63A8\u8350" ? "\u63A8\u8350" : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+              "\u4E0D\u9700\u8981",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "muted", children: "\uFF08\u53EF\u9009\u767B\u5F55\uFF09" })
+            ] });
             const checking = busy[r.platform] === "check";
             const browsing = busy[r.platform] === "browser";
             return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
@@ -27122,7 +27151,9 @@ ${sum}
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u76F4\u8FDE\u63A5\u53E3 / \u6D4F\u89C8\u5668\u6E32\u67D3+\u54CD\u5E94\u6355\u83B7 / fetch \u76F4\u53D6" }),
               "\u4E09\u4E2A\u901A\u9053",
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u5404\u81EA\u72EC\u7ACB" }),
-              "\u8BD5\u8DD1\uFF08\u4E92\u4E0D\u56DE\u9000\u3001\u4E0D\u843D\u5E93\u3001\u4E0D\u91C7\u8BE6\u60C5\uFF09\uFF0C\u6A2A\u5411\u5BF9\u6BD4\u54EA\u79CD\u6280\u672F\u5BF9\u8BE5\u5E73\u53F0\u6709\u6548\u3002\u771F\u5B9E\u7F51\u7EDC\u8BF7\u6C42\uFF0C\u6D4F\u89C8\u5668\u901A\u9053\u53EF\u80FD\u9700\u8981 30~90 \u79D2\u3002"
+              "\u8BD5\u8DD1\uFF08\u4E92\u4E0D\u56DE\u9000\u3001\u4E0D\u843D\u5E93\u3001\u4E0D\u91C7\u8BE6\u60C5\uFF09\uFF0C\u6A2A\u5411\u5BF9\u6BD4\u54EA\u79CD\u6280\u672F\u5BF9\u8BE5\u5E73\u53F0\u6709\u6548\u3002\u70B9\u51FB\u540E",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u5F39\u7A97\u5B9E\u65F6\u5C55\u793A\u6D4B\u8BD5\u6D41\u7A0B\u4E0E\u8FDB\u5EA6\u65E5\u5FD7" }),
+              "\uFF1B\u771F\u5B9E\u7F51\u7EDC\u8BF7\u6C42\uFF0C\u6D4F\u89C8\u5668\u901A\u9053\u53EF\u80FD\u9700\u8981 30~90 \u79D2\u3002"
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -27254,6 +27285,58 @@ ${sum}
                 }
               )
             ] }, e.platform)) })
+          ] })
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        "div",
+        {
+          className: "modal-mask",
+          hidden: !diagLogOpen,
+          onClick: (e) => {
+            if (e.target === e.currentTarget) setDiagLogOpen(false);
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "modal", style: { maxWidth: 760 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "modal-head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("h3", { children: [
+                "\u{1F9EA} \u5E73\u53F0\u901A\u9053\u8BCA\u65AD \xB7 ",
+                diagPlat,
+                "\u300C",
+                diagQuery,
+                "\u300D",
+                diagRunning ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "badge", style: { marginLeft: 8 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "dot", style: { background: "#b45309" } }),
+                  "\u8BCA\u65AD\u4E2D\u2026"
+                ] }) : diagResult ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "badge ok", style: { marginLeft: 8 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "dot" }),
+                  "\u5DF2\u5B8C\u6210"
+                ] }) : null
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "btn-danger", onClick: () => setDiagLogOpen(false), children: "\u5173\u95ED" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "modal-body", style: { maxHeight: "62vh", overflowY: "auto" }, children: [
+              !diagLogLines.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "count", children: "\u6B63\u5728\u542F\u52A8\u8BCA\u65AD\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                "pre",
+                {
+                  style: {
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    background: "var(--bg-soft, #f7f7f8)",
+                    padding: "8px 10px",
+                    borderRadius: 2
+                  },
+                  children: diagLogLines.join("\n")
+                }
+              ),
+              !diagRunning && diagError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { color: "#9a3412", marginTop: 8 }, children: diagError }) : null,
+              !diagRunning && diagResult ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "10px 0 0" }, children: [
+                "\u2705 \u8BCA\u65AD\u5B8C\u6210\uFF1A",
+                diagResult.best ? `\u63A8\u8350\u300C${diagResult.channels.find((c) => c.key === diagResult.best)?.name}\u300D\uFF08\u660E\u7EC6\u8868\u89C1\u4E0B\u65B9\u9762\u677F\uFF09` : "\u6240\u6709\u901A\u9053\u5747\u672A\u62FF\u5230\u6570\u636E\u2014\u2014\u591A\u4E3A\u767B\u5F55\u6001\u7F3A\u5931\u6216\u88AB\u98CE\u63A7\uFF0C\u5148\u5230\u300C\u5E73\u53F0\u767B\u5F55\u72B6\u6001\u300D\u9762\u677F\u63D0\u53D6\u767B\u5F55\u6001\u518D\u5B9E\u9A8C\uFF08\u660E\u7EC6\u8868\u89C1\u4E0B\u65B9\u9762\u677F\uFF09"
+              ] }) : null
+            ] })
           ] })
         }
       ),

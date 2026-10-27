@@ -32,6 +32,7 @@ const LOGIN_URLS = {
   xianyu: 'https://login.goofish.com/',
   dewu: 'https://www.dewu.com/',
   suning: 'https://passport.suning.com/',
+  huawei: 'https://www.vmall.com/',
   // 2026-10-26 扩展四平台（登录入口均在主站，登录后 Cookie 自动捕获）
   xiaohongshu: 'https://www.xiaohongshu.com/',
   douyin: 'https://www.douyin.com/',

@@ -1095,13 +1095,18 @@ export class GenericScrapeAdapter extends BaseAdapter {
     const limit = opts.limit || 5;
     const channels: any[] = [];
     const source = cfg.searchUrl ? cfg.searchUrl(query) : query;
+    const chanLog = (no: number, name: string, msg: string) => runLog(`【通道诊断】${no ? `${no}·${name}` : name} ${msg}`.trim());
+
+    chanLog(0, '', `开始：平台=${this.id}（${cfg.name}） 查询词=「${query}」 通道=${[cfg.directApi ? '直连接口' : null, '浏览器渲染', 'fetch 直取'].filter(Boolean).join(' / ')}（互不回退、独立实验）`);
 
     // ① 直连接口通道（配置了 directApi 的平台才有）
     if (cfg.directApi) {
       const started = Date.now();
+      chanLog(1, '直连接口', '开始：直接调用平台网页端数据接口…');
       try {
         await netThrottle(runLog);
         const rows = await cfg.directApi({ query, limit, log: runLog });
+        chanLog(1, '直连接口', `完成：${rows.length} 条（${((Date.now() - started) / 1000).toFixed(1)}s）${rows.length ? '' : '——接口返回 0 条（登录态缺失或被风控拦截）'}`);
         channels.push({
           key: 'direct',
           name: '直连接口（逆向网页端 XHR）',
@@ -1112,6 +1117,7 @@ export class GenericScrapeAdapter extends BaseAdapter {
           error: rows.length ? '' : '接口返回 0 条（登录态缺失或被风控拦截）',
         });
       } catch (e: any) {
+        chanLog(1, '直连接口', `失败：${String(e.message).slice(0, 120)}`);
         channels.push({ key: 'direct', name: '直连接口（逆向网页端 XHR）', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
       }
     }
@@ -1119,6 +1125,7 @@ export class GenericScrapeAdapter extends BaseAdapter {
     // ② 浏览器渲染（Patchright）+ 响应捕获 + DOM/内嵌 JSON 解析
     {
       const started = Date.now();
+      chanLog(2, '浏览器渲染', '开始：Patchright 无头加载搜索页（自动滚动触发懒加载，旁路捕获数据接口响应）…');
       try {
         const { html, page, browser, tfsBlocked, apiBodies } = await load(source, this.id);
         try {
@@ -1138,6 +1145,7 @@ export class GenericScrapeAdapter extends BaseAdapter {
             via.push(`响应捕获(${apiRaw.length} 条)`);
             if (apiRaw.length >= products.length) products = mapApiProducts(apiRaw, cfg, this.id);
           }
+          chanLog(2, '浏览器渲染', `完成：${products.length} 条（${((Date.now() - started) / 1000).toFixed(1)}s，来源：${via.join(' + ') || '无'}）`);
           channels.push({
             key: 'browser',
             name: '浏览器渲染（Patchright）+ 响应捕获',
@@ -1152,6 +1160,7 @@ export class GenericScrapeAdapter extends BaseAdapter {
           await closePage(browser);
         }
       } catch (e: any) {
+        chanLog(2, '浏览器渲染', `失败：${String(e.message).slice(0, 120)}`);
         channels.push({ key: 'browser', name: '浏览器渲染（Patchright）+ 响应捕获', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
       }
     }
@@ -1159,12 +1168,14 @@ export class GenericScrapeAdapter extends BaseAdapter {
     // ③ fetch 直取通道（TLS 伪装 + SSR/静态 HTML 解析，无浏览器）
     {
       const started = Date.now();
+      chanLog(3, 'fetch 直取', '开始：impit TLS 伪装直取搜索页 HTML（无浏览器，SSR/静态解析）…');
       try {
         await netThrottle(runLog);
         const profile = resolveProfile(this.id);
         const r = await loadFetch(source, profile);
         reportSessionOk(profile.sid);
         const products = parseProducts(r.html, cfg);
+        chanLog(3, 'fetch 直取', `完成：${products.length} 条（${((Date.now() - started) / 1000).toFixed(1)}s，HTML ${(r.html.length / 1024).toFixed(0)}KB）`);
         channels.push({
           key: 'fetch',
           name: 'fetch 直取（impit TLS 伪装 + SSR 解析）',
@@ -1176,12 +1187,14 @@ export class GenericScrapeAdapter extends BaseAdapter {
           error: products.length ? '' : `HTML ${(r.html.length / 1024).toFixed(0)}KB 无商品数据（JS 渲染站点此通道天然不可行）`,
         });
       } catch (e: any) {
+        chanLog(3, 'fetch 直取', `失败：${String(e.message).slice(0, 120)}`);
         channels.push({ key: 'fetch', name: 'fetch 直取（impit TLS 伪装 + SSR 解析）', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
       }
     }
 
     // 结论：成功的通道里数据量多者优先，同量级耗时短者优先
     const best = channels.filter((c) => c.ok).sort((a, b) => b.count - a.count || a.ms - b.ms)[0]?.key || '';
+    chanLog(0, '', best ? `结束：推荐通道=${channels.find((c) => c.key === best)?.name}` : '结束：所有通道均未拿到数据（多为登录态缺失或被风控，先提取登录态再实验）');
     return { platform: this.id, name: cfg.name, query, channels, best };
   }
 

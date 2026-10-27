@@ -67,7 +67,8 @@ function check(name, cond) {
     .locator('#loginTable tbody tr', { hasText: 'huawei' })
     .first()
     .innerText();
-  check('4d. 无需登录平台不显示重新登录按钮', huaweiOps.includes('无需登录'));
+  // 2026-10-27 round45：所有平台（含「不需要」登录的）都提供登录入口——部分评论/问答登录后才可见
+  check('4d. 无需登录平台同样提供重新登录按钮（可选登录态）', huaweiOps.includes('重新登录') || huaweiOps.includes('登录'));
 
   // 5. 数据清理弹框
   await page.click('.nav-item[data-page="data"]');

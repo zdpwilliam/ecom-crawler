@@ -376,10 +376,33 @@ export function SettingsPage() {
   const [diagRunning, setDiagRunning] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [diagError, setDiagError] = useState('');
+  // 诊断进度弹窗：轮询 /api/logs 增量展示测试流程日志（与采集日志弹窗同一模式）
+  const [diagLogOpen, setDiagLogOpen] = useState(false);
+  const [diagLogLines, setDiagLogLines] = useState<string[]>([]);
+  const diagLogLast = useRef(-1);
+  const diagLogTimer = useRef<any>(null);
+  async function pullDiagLogs() {
+    try {
+      const d = await apiJson(`/api/logs?since=${diagLogLast.current}`);
+      if (d.lines?.length) setDiagLogLines((ls) => [...ls, ...d.lines.map((l: any) => `[${l.t}] ${l.msg}`)]);
+      diagLogLast.current = d.last;
+    } catch {}
+  }
   async function runTechDiag() {
     setDiagRunning(true);
     setDiagError('');
     setDiagResult(null);
+    // 打开进度弹窗，日志起点设为当前最后一条（只展示本次诊断的增量）
+    setDiagLogOpen(true);
+    setDiagLogLines([]);
+    try {
+      const cur = await apiJson('/api/logs');
+      diagLogLast.current = cur.last ?? -1;
+    } catch {
+      diagLogLast.current = -1;
+    }
+    clearInterval(diagLogTimer.current);
+    diagLogTimer.current = setInterval(pullDiagLogs, 1000);
     try {
       const r = await apiJson('/api/tech-diagnose', {
         method: 'POST',
@@ -390,6 +413,9 @@ export function SettingsPage() {
     } catch (e: any) {
       setDiagError('诊断失败：' + e.message);
     } finally {
+      clearInterval(diagLogTimer.current);
+      // 结束后再多拉一次，把收尾日志收全（与采集日志弹窗相同的兜底）
+      setTimeout(pullDiagLogs, 1200);
       setDiagRunning(false);
     }
   }
@@ -791,7 +817,7 @@ export function SettingsPage() {
       <section className="panel">
         <h2>平台登录状态</h2>
         <p className="hint" style={{ margin: '0 0 10px' }}>
-          展示每个平台<b>是否需要登录</b>、<b>是否已保存登录信息</b>、以及登录态<b>是否真实有效</b>（用已保存 Cookie 发一次真实请求验证；无探针的平台按 Cookie 有效期推断）。采集会自动注入有效登录态。
+          展示每个平台<b>是否需要登录</b>、<b>是否已保存登录信息</b>、以及登录态<b>是否真实有效</b>（用已保存 Cookie 发一次真实请求验证；无探针的平台按 Cookie 有效期推断）。采集会自动注入有效登录态。<b>「不需要」登录的平台同样可以设置登录信息</b>——部分评论/问答等数据登录后才可见。
         </p>
         <div className="controls">
           <span id="lgMeta" className="kv">
@@ -824,7 +850,7 @@ export function SettingsPage() {
               </thead>
               <tbody>
                 {rows.map((r: any) => {
-                  const need = r.needLogin === '必需' ? <b style={{ color: '#9a3412' }}>必需</b> : r.needLogin === '推荐' ? '推荐' : '不需要';
+                  const need = r.needLogin === '必需' ? <b style={{ color: '#9a3412' }}>必需</b> : r.needLogin === '推荐' ? '推荐' : <>不需要<span className="muted">（可选登录）</span></>;
                   const checking = busy[r.platform] === 'check';
                   const browsing = busy[r.platform] === 'browser';
                   // 所有平台都提供登录入口：即使「不需要登录」的平台，评论/问答等详情数据也常要求登录后才能拿到
@@ -1287,7 +1313,7 @@ export function SettingsPage() {
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--line, #e5e5e5)' }} id="techDiagnose">
               <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>🧪 平台通道诊断（逐技术独立实验）</h3>
               <p className="hint" style={{ margin: '0 0 10px' }}>
-                选平台输入查询词，把搜索链路按<b>直连接口 / 浏览器渲染+响应捕获 / fetch 直取</b>三个通道<b>各自独立</b>试跑（互不回退、不落库、不采详情），横向对比哪种技术对该平台有效。真实网络请求，浏览器通道可能需要 30~90 秒。
+                选平台输入查询词，把搜索链路按<b>直连接口 / 浏览器渲染+响应捕获 / fetch 直取</b>三个通道<b>各自独立</b>试跑（互不回退、不落库、不采详情），横向对比哪种技术对该平台有效。点击后<b>弹窗实时展示测试流程与进度日志</b>；真实网络请求，浏览器通道可能需要 30~90 秒。
               </p>
               <div className="controls">
                 <select
@@ -1444,6 +1470,64 @@ export function SettingsPage() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* 平台通道诊断进度弹窗：展示三通道独立实验的流程与进度日志（轮询 /api/logs 增量） */}
+      <div
+        className="modal-mask"
+        hidden={!diagLogOpen}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setDiagLogOpen(false);
+        }}
+      >
+        <div className="modal" style={{ maxWidth: 760 }}>
+          <div className="modal-head">
+            <h3>
+              🧪 平台通道诊断 · {diagPlat}「{diagQuery}」
+              {diagRunning ? (
+                <span className="badge" style={{ marginLeft: 8 }}>
+                  <span className="dot" style={{ background: '#b45309' }}></span>诊断中…
+                </span>
+              ) : diagResult ? (
+                <span className="badge ok" style={{ marginLeft: 8 }}>
+                  <span className="dot"></span>已完成
+                </span>
+              ) : null}
+            </h3>
+            <button className="btn-danger" onClick={() => setDiagLogOpen(false)}>
+              关闭
+            </button>
+          </div>
+          <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+            {!diagLogLines.length ? (
+              <p className="count">正在启动诊断…</p>
+            ) : (
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  background: 'var(--bg-soft, #f7f7f8)',
+                  padding: '8px 10px',
+                  borderRadius: 2,
+                }}
+              >
+                {diagLogLines.join('\n')}
+              </pre>
+            )}
+            {!diagRunning && diagError ? <p style={{ color: '#9a3412', marginTop: 8 }}>{diagError}</p> : null}
+            {!diagRunning && diagResult ? (
+              <p className="hint" style={{ margin: '10px 0 0' }}>
+                ✅ 诊断完成：
+                {diagResult.best
+                  ? `推荐「${diagResult.channels.find((c: any) => c.key === diagResult.best)?.name}」（明细表见下方面板）`
+                  : '所有通道均未拿到数据——多为登录态缺失或被风控，先到「平台登录状态」面板提取登录态再实验（明细表见下方面板）'}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

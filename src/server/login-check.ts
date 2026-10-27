@@ -158,11 +158,17 @@ function probeHeuristic(platform: string, log: (m: string) => void) {
 async function checkLoginCore(platform: string, emit: (m: string) => void) {
   const need = NEED_LOGIN[platform] || '推荐';
   const base = { platform, needLogin: need, checkedAt: new Date().toISOString(), method: '-', status: 'absent', count: 0, expired: 0, detail: '' };
-  if (need === '不需要') {
-    emit('该平台采集链路为匿名直连，无需登录态，跳过实测');
-    return { ...base, status: 'none', detail: '该平台采集链路为匿名直连，无需登录态' };
-  }
+  // 「不需要」登录的平台也支持设置登录信息（部分评论/问答等数据登录后才可见）：
+  // 未保存 Cookie 时仍标记 absent 引导可选设置；保存了 Cookie 则照常走启发式判定。
   const arr = loadCookieArr(platform);
+  if (need === '不需要' && !arr) {
+    emit('该平台采集链路为匿名直连（无需登录）；如需查看登录后可见的评论等数据，可「提取登录态」保存 Cookie');
+    return {
+      ...base,
+      status: 'absent',
+      detail: '匿名可采（无需登录）；如需看登录后评论等数据，可「提取登录态」保存 Cookie',
+    };
+  }
   if (!arr) {
     emit(`未找到 Cookie 文件（cookies/${platform}.json 不存在或为空）`);
     return {
@@ -262,11 +268,12 @@ export function getStatus({ fillMissing = false } = {}) {
       const fileMtime = cookieFileMtime(p);
       const cachedAt = cached?.checkedAt ? Math.floor(new Date(cached.checkedAt).getTime() / 1000) : 0;
       const stale = cached && fileMtime > cachedAt; // 文件在检测之后被更新过（如一键提取刚保存）
-      if (cached && !stale) continue;
+      // 旧版本对「不需要」平台强制缓存 none（语义已改为可选登录态支持），重新计算一次
+      if (cached && !stale && cached.status !== 'none') continue;
       const need = NEED_LOGIN[p] || '推荐';
       const arr = loadCookieArr(p);
-      if (need === '不需要') cache.results[p] = { platform: p, needLogin: need, status: 'none', detail: '无需登录', count: 0, expired: 0, method: '-', checkedAt: null };
-      else if (!arr) cache.results[p] = { platform: p, needLogin: need, status: 'absent', detail: '尚未保存 Cookie', count: 0, expired: 0, method: '-', checkedAt: null };
+      // 「不需要」平台同样按有无 Cookie 走 absent/启发式（可选登录态支持；不再强制覆盖为 none）
+      if (!arr) cache.results[p] = { platform: p, needLogin: need, status: 'absent', detail: need === '不需要' ? '匿名可采（无需登录）；如需看登录后评论等数据，可「提取登录态」保存 Cookie' : '尚未保存 Cookie', count: 0, expired: 0, method: '-', checkedAt: null };
       else {
         const st = cookieStats(arr);
         const r = st.expired >= st.count
