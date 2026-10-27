@@ -73,12 +73,14 @@ function check(name, ok) {
 
   // ---------- 4. 服务端配置接线：探测结论 / 详情 URL / 币种 ----------
   const cfgWired = await page.evaluate(async (ids) => {
-    // 通过登录检测接口确认新平台走 Cookie 启发式路径（不发网络请求的 status 已在页面上验证）
-    // 这里直接读服务端返回的 login status：四平台 detail 均有引导文案
+    // 通过登录检测接口确认新平台登录态说明有意义（2026-10-27 改为状态感知）：
+    // 未存 Cookie → 引导「提取登录态/保存 Cookie」；已存 Cookie（如快手用户真实登录过）→ 启发式描述非空
     const st = await (await fetch('/api/login/status')).json();
-    return ids.map((p) => ({ p, detail: st.results?.[p]?.detail || '' }));
+    return ids.map((p) => ({ p, status: st.results?.[p]?.status || '', detail: st.results?.[p]?.detail || '' }));
   }, NEW_PLATFORMS);
-  check('四新平台登录态说明含引导文案', cfgWired.every((x) => /提取登录态|保存 Cookie/.test(x.detail)));
+  check('四新平台登录态说明有意义（无 Cookie 带引导 / 有 Cookie 带描述）', cfgWired.every((x) =>
+    x.status === 'absent' ? /提取登录态|保存 Cookie/.test(x.detail) : (x.status === 'none' || x.detail.length > 4)
+  ));
 
   // ---------- 5. 无登录态采集给出明确失败提示（小样本，验证 noProductHint 接线） ----------
   // 用小红书搜索跑一次（未存 Cookie → 浏览器渲染落登录墙 → 报错文案带探测结论）

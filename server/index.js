@@ -17,7 +17,7 @@ import { getLogs } from './runlog.js';
 import { requestStop } from './stop-flag.js';
 import { GenericScrapeAdapter, loadHtml } from './adapters/scrape/generic.js';
 import { getScrapeAdapter } from './adapters/registry.js';
-import { getStatus, checkLogin, checkAll, saveCookieFile, startLoginCheckScheduler } from './login-check.js';
+import { getStatus, checkLogin, checkLoginCached, checkAll, saveCookieFile, startLoginCheckScheduler } from './login-check.js';
 import { runTest } from './test-run.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -234,7 +234,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/login/check' && req.method === 'POST') {
       const b = await readBody(req);
       if (!b.platform) return send(res, 400, { error: '需提供 platform' });
-      const r = await checkLogin(b.platform);
+      // 检测结果回写缓存：否则面板下次读取又拿回旧值（检测等于白测）
+      const r = await checkLoginCached(b.platform);
       return send(res, 200, r);
     }
     if (p === '/api/login/check-all' && req.method === 'POST') {
@@ -253,6 +254,40 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { status: 'ok', ...r, login: checked });
       } catch (e) {
         return send(res, 400, { error: e.message });
+      }
+    }
+
+    // 浏览器态登录检测：读取「提取登录态」所用持久化浏览器档案中该平台的实时登录状态。
+    // 与「检测」（读已保存 Cookie 文件）互补：浏览器态反映档案里最新 Cookie（含未同步到快照的），
+    // 若判定已登录会顺带把最新 Cookie 同步为采集用快照。headless 运行约 10~40 秒。
+    if (p === '/api/login/check-browser' && req.method === 'POST') {
+      const b = await readBody(req);
+      const platform = String(b.platform || '').trim();
+      if (!/^[a-z0-9_-]{1,20}$/i.test(platform)) return send(res, 400, { error: '需提供合法 platform' });
+      try {
+        const r = await new Promise((resolve) => {
+          const child = spawn(process.execPath, ['tools/cookie-tool.js', 'probe', '--platform', platform], {
+            cwd: path.resolve(__dirname, '..'),
+            timeout: 90000,
+          });
+          let out = '';
+          child.stdout.on('data', (c) => { out += c; });
+          child.stderr.on('data', (c) => { out += c; });
+          child.on('error', (e) => resolve({ status: 'error', detail: `probe 进程启动失败：${e.message}` }));
+          child.on('close', (code) => {
+            // 约定：stdout 最后一行 JSON 为结果
+            const lines = out.trim().split(/\r?\n/);
+            for (let i = lines.length - 1; i >= 0; i--) {
+              if (lines[i].startsWith('{')) {
+                try { return resolve(JSON.parse(lines[i])); } catch {}
+              }
+            }
+            resolve({ status: 'error', detail: `probe 退出码 ${code}，无 JSON 结果：${out.trim().slice(-160)}` });
+          });
+        });
+        return send(res, 200, { platform, ...r });
+      } catch (e) {
+        return send(res, 500, { platform, status: 'error', detail: e.message });
       }
     }
 
@@ -423,10 +458,22 @@ const server = http.createServer(async (req, res) => {
     // Cookie 文件列表
     if (p === '/api/cookies' && req.method === 'GET') {
       let files = [];
+      const fingerprint = {}; // name -> "条数:mtime秒"：前端轮询据此感知「同名文件被重新保存」
       if (fs.existsSync(COOKIES_DIR)) {
-        files = fs.readdirSync(COOKIES_DIR).filter((f) => f.endsWith('.json'));
+        for (const f of fs.readdirSync(COOKIES_DIR).filter((f) => f.endsWith('.json'))) {
+          files.push(f);
+          try {
+            const st = fs.statSync(path.join(COOKIES_DIR, f));
+            let count = 0;
+            try {
+              const arr = JSON.parse(fs.readFileSync(path.join(COOKIES_DIR, f), 'utf8'));
+              count = Array.isArray(arr) ? arr.length : 0;
+            } catch {}
+            fingerprint[f] = `${count}:${Math.floor(st.mtimeMs / 1000)}`;
+          } catch {}
+        }
       }
-      return send(res, 200, { cookiesDir: COOKIES_DIR, files });
+      return send(res, 200, { cookiesDir: COOKIES_DIR, files, fingerprint });
     }
 
     // 一键提取登录态：弹出系统 Chrome 让用户登录，cookie-tool 检测到登录成功自动保存。

@@ -1,10 +1,12 @@
 // Cookie 提取小工具
 // 作用：把你自己在浏览器里的登录态导出成标准 JSON，供爬取时自动注入（绕过登录墙）。
 // 用法：
-//   交互提取（弹出真实浏览器，登录后回车保存）：
+//   交互提取（弹出真实浏览器，登录后自动保存；档案持久化，重登免重复登录）：
 //     node tools/cookie-tool.js extract --platform taobao
 //   指定登录页 / 无头自动等待：
 //     node tools/cookie-tool.js extract --platform jd --url https://passport.jd.com --timeout 60
+//   查询持久化浏览器档案中某平台的实时登录态（headless，已登录则同步快照）：
+//     node tools/cookie-tool.js probe --platform kuaishou
 //   从浏览器复制的 "a=1; b=2" 或 JSON 转换：
 //     node tools/cookie-tool.js convert --platform taobao --in cookies.txt
 //     node tools/cookie-tool.js convert --platform taobao --cookies "cookie1=val1; cookie2=val2"
@@ -17,6 +19,10 @@ import readline from 'node:readline';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const COOKIES_DIR = path.resolve(__dirname, '..', 'data', 'cookies');
+// 持久化浏览器档案根目录：每平台一个独立档案（Cookie/localStorage 跨次保留，
+// 重登时通常已带会话可秒过；probe 也从这里读取实时登录态）
+const PROFILE_ROOT = path.resolve(__dirname, '..', 'data', 'chrome-profiles');
+const profileDir = (platform) => path.join(PROFILE_ROOT, platform);
 const LOGIN_URLS = {
   taobao: 'https://login.taobao.com/member/login.jhtml',
   jd: 'https://passport.jd.com/new/login.aspx',
@@ -94,21 +100,30 @@ export function shouldAutoClose(markerHit, pageConfirmed) {
   return pageConfirmed === true;
 }
 
-async function extract(platform, opts) {
+// 启动浏览器（持久化档案版）：返回 context（launchPersistentContext 下 context 即浏览器句柄）。
+// 优先系统 Chrome；档案被占用/启动失败时退回 Playwright 内核 + 一次性临时档案。
+async function launchExtractBrowser(platform, { headless, fresh = false } = {}) {
   const { chromium } = await import('playwright');
+  const args = ['--start-maximized', '--disable-blink-features=AutomationControlled'];
+  fs.mkdirSync(PROFILE_ROOT, { recursive: true });
+  const dir = fresh ? fs.mkdtempSync(path.join(PROFILE_ROOT, '_tmp-')) : profileDir(platform);
+  try {
+    const ctx = await chromium.launchPersistentContext(dir, { headless, channel: 'chrome', viewport: null, args });
+    console.log(headless ? `（系统 Chrome · headless · 档案 ${dir}）` : `（系统 Chrome · 档案 ${dir}）`);
+    return { ctx, dir };
+  } catch (e) {
+    console.log(`系统 Chrome 启动失败（${String(e.message).slice(0, 70)}），退回 Playwright 内核 + 临时档案`);
+    const tmp = fs.mkdtempSync(path.join(PROFILE_ROOT, '_tmp-'));
+    const ctx = await chromium.launchPersistentContext(tmp, { headless, viewport: null, args });
+    return { ctx, dir: tmp };
+  }
+}
+
+async function extract(platform, opts) {
   const url = opts.url || LOGIN_URLS[platform] || `https://www.${platform}.com`;
   fs.mkdirSync(COOKIES_DIR, { recursive: true });
-  // 优先用系统安装的 Chrome（完整功能、可正常操作），不可用再退回 Playwright 内核；
-  // 最大化窗口并置顶，避免「弹出了但没法操作」。
-  let browser;
-  try {
-    browser = await chromium.launch({ headless: !!opts.headless, channel: 'chrome', args: ['--start-maximized'] });
-    console.log('（使用系统 Chrome）');
-  } catch {
-    browser = await chromium.launch({ headless: !!opts.headless, args: ['--start-maximized'] });
-  }
-  const ctx = await browser.newContext({ viewport: null }); // 跟随真实窗口大小
-  const page = await ctx.newPage();
+  const { ctx } = await launchExtractBrowser(platform, { headless: !!opts.headless });
+  const page = ctx.pages()[0] || (await ctx.newPage());
   await page.bringToFront();
   console.log(`已打开登录页：${url}`);
   console.log('请在弹出的浏览器中完成登录（扫码 / 账号密码）。登录成功后会自动保存，无需其他操作。');
@@ -155,14 +170,63 @@ async function extract(platform, opts) {
   const cookies = lastCookies;
   if (!cookies.length) {
     console.error('提取失败：未捕获到任何 Cookie。');
-    await browser.close().catch(() => {});
+    await ctx.close().catch(() => {});
     process.exit(1);
   }
   const file = path.join(COOKIES_DIR, `${platform}.json`);
   fs.writeFileSync(file, JSON.stringify(cookies, null, 2));
   console.log(`✅ 已保存 ${cookies.length} 条 Cookie → ${file}${loggedIn ? '（已确认登录态）' : '（注意：未检测到明确登录态，若采集仍被拦截请重新提取）'}`);
   console.log('采集时无需再设 CRAWL_COOKIES，系统会自动读取该文件注入登录态。');
-  await browser.close().catch(() => {});
+  await ctx.close().catch(() => {});
+}
+
+// 浏览器态登录检测：headless 打开该平台的持久化浏览器档案，读取其中实时 Cookie 判定登录态。
+// 判定已登录时顺带把档案内最新 Cookie 同步为采集用快照（cookies/<platform>.json）。
+// 输出：stdout 最后一行 JSON：{ platform, status: logged-in|guest|uncertain|no-profile|unsupported|error, ... }
+async function probe(platform, opts) {
+  const marker = LOGIN_MARKERS[platform];
+  if (!marker) {
+    console.log(JSON.stringify({ platform, status: 'unsupported', detail: '该平台暂无浏览器态登录判定标记（LOGIN_MARKERS 未收录）' }));
+    return;
+  }
+  if (!fs.existsSync(profileDir(platform))) {
+    console.log(JSON.stringify({ platform, status: 'no-profile', detail: '该平台尚无持久化浏览器档案，请先点「🔑登录」提取一次登录态' }));
+    return;
+  }
+  const url = opts.url || LOGIN_URLS[platform] || `https://www.${platform}.com`;
+  let ctx;
+  try {
+    ({ ctx } = await launchExtractBrowser(platform, { headless: true }));
+  } catch (e) {
+    console.log(JSON.stringify({ platform, status: 'error', detail: `档案浏览器启动失败（可能被其他提取进程占用）：${String(e.message).slice(0, 80)}` }));
+    return;
+  }
+  try {
+    const cookies = await ctx.cookies();
+    const markerHit = marker(cookies);
+    const confirmFn = LOGIN_CONFIRM[platform];
+    let pageConfirmed = null;
+    if (markerHit && confirmFn) {
+      const page = ctx.pages()[0] || (await ctx.newPage());
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(5000);
+      pageConfirmed = await confirmFn(page).catch(() => null);
+    }
+    const base = { platform, cookieCount: cookies.length, markerHit, pageConfirmed };
+    if (shouldAutoClose(markerHit, pageConfirmed)) {
+      fs.mkdirSync(COOKIES_DIR, { recursive: true });
+      fs.writeFileSync(path.join(COOKIES_DIR, `${platform}.json`), JSON.stringify(cookies, null, 2));
+      console.log(JSON.stringify({ ...base, status: 'logged-in', saved: true, detail: `浏览器档案内检测到登录态（${cookies.length} 条 Cookie），已同步为采集用快照` }));
+    } else if (!markerHit) {
+      console.log(JSON.stringify({ ...base, status: 'guest', detail: '浏览器档案内未检测到登录 Cookie（游客态）' }));
+    } else {
+      console.log(JSON.stringify({ ...base, status: 'uncertain', detail: '检测到疑似登录 Cookie 但页面未确认登录（可能为游客种下的同名 Cookie）' }));
+    }
+  } catch (e) {
+    console.log(JSON.stringify({ platform, status: 'error', detail: `探测异常：${String(e.message).slice(0, 100)}` }));
+  } finally {
+    await ctx.close().catch(() => {});
+  }
 }
 
 async function convert(platform, opts) {
@@ -208,6 +272,7 @@ function help() {
   console.log(`Cookie 提取工具
 
 extract  --platform <id> [--url <登录页>] [--timeout <秒>] [--headless]
+probe    --platform <id>   # headless 读取持久化浏览器档案的实时登录态，已登录则同步快照
 convert  --platform <id> --in <文件> | --cookies "a=1; b=2"
 list
 `);
@@ -220,6 +285,10 @@ switch (cmd) {
   case 'extract':
     if (!args.platform) { console.error('需 --platform <id>'); process.exit(1); }
     extract(args.platform, args).catch((e) => { console.error('提取失败：', e.message); process.exit(1); });
+    break;
+  case 'probe':
+    if (!args.platform) { console.error('需 --platform <id>'); process.exit(1); }
+    probe(args.platform, args).catch((e) => { console.log(JSON.stringify({ platform: args.platform, status: 'error', detail: e.message })); process.exit(1); });
     break;
   case 'convert':
     convert(args.platform || 'self', args).catch((e) => { console.error('转换失败：', e.message); process.exit(1); });

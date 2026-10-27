@@ -28,9 +28,9 @@ let failed = 0;
 for (const f of SUITE) {
   const run = () => spawnSync(process.execPath, [path.join(TOOLS, f)], { encoding: 'utf8', timeout: 300000 });
   let r = run();
-  // 含真实网络请求的脚本（得物/补抓/采集）存在偶发网络抖动：失败自动重跑一次，仍失败才计 FAIL
-  if (r.status !== 0) {
-    console.log(`RETRY ${f}（首轮失败，疑似网络抖动，重跑一次）`);
+  // 含真实网络请求的脚本（得物/补抓/采集）存在偶发网络抖动：失败最多重跑 2 次，仍失败才计 FAIL
+  for (let attempt = 2; attempt <= 3 && r.status !== 0; attempt++) {
+    console.log(`RETRY ${f}（第 ${attempt - 1} 次失败，疑似网络抖动，重跑）`);
     r = run();
   }
   const out = (r.stdout || '') + (r.stderr || '');

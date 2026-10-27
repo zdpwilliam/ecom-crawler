@@ -470,23 +470,24 @@ function launchCookieExtract(platform, statusEl, onSaved) {
   let baseline;
   (async () => {
     try {
-      baseline = JSON.stringify((await apiJson('/api/cookies')).files);
+      // 基线用「条数:mtime」指纹而非文件名列表：重登场景下同名文件被重新保存也能感知
+      baseline = JSON.stringify((await apiJson('/api/cookies')).fingerprint || {});
       await apiJson('/api/cookies/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform }),
       });
-      statusEl.textContent = `浏览器已弹出：请在窗口内登录「${platform}」，登录成功后自动保存（10 分钟内有效）。本表 15 秒刷新一次，保存后自动重测。`;
+      statusEl.textContent = `浏览器已弹出：请在窗口内登录「${platform}」，登录成功后自动保存（10 分钟内有效）。保存后自动重测并刷新本表。`;
     } catch (e) {
       statusEl.textContent = '启动失败：' + e.message;
       return;
     }
-    // 轮询 Cookie 文件列表：出现新文件/条数变化即认为保存成功
+    // 轮询 Cookie 指纹：文件内容变化（新文件 / 同名文件重新保存）即认为保存成功
     const t0 = Date.now();
     const timer = setInterval(async () => {
       try {
         const c = await apiJson('/api/cookies');
-        if (JSON.stringify(c.files) !== baseline) {
+        if (JSON.stringify(c.fingerprint || c.files) !== baseline) {
           clearInterval(timer);
           statusEl.textContent = `✅ ${platform} 登录态已保存，正在重新检测有效性…`;
           // 联动：登录态变化后刷新工作台平台信息卡（若当前平台一致）
@@ -603,7 +604,8 @@ async function loadLoginStatus() {
         const statusCell = `<span class="badge ${loginBadgeCls(r.status)}"><span class="dot"></span>${esc(LOGIN_STATUS_TEXT[r.status] || r.status)}</span>`;
         // 所有平台都提供登录入口：即使「不需要登录」的平台，评论/问答等详情数据也常要求登录后才能拿到
         const ops = `<button data-lgcheck="${esc(r.platform)}" style="padding:2px 10px">检测</button>
-             <button data-lgrelogin="${esc(r.platform)}" class="btn-ghost btn-sm" style="margin-top:4px">${r.count > 0 ? '🔑 重新登录' : '🔑 登录'}</button>`;
+             <button data-lgrelogin="${esc(r.platform)}" class="btn-ghost btn-sm" style="margin-top:4px">${r.count > 0 ? '🔑 重新登录' : '🔑 登录'}</button>
+             <button data-lgbrowser="${esc(r.platform)}" class="btn-ghost btn-sm" style="margin-top:4px" title="headless 读取提取浏览器档案的实时登录态，已登录则同步为采集用快照（约 10~40 秒）">🌐 浏览器态</button>`;
         return `<tr>
         <td>${esc(r.platform)}</td><td>${need}</td><td>${cookie}</td>
         <td>${statusCell}</td>
@@ -617,6 +619,7 @@ async function loadLoginStatus() {
       `<table><thead><tr><th>平台</th><th>需要登录</th><th>已存 Cookie</th><th>登录状态</th><th>说明</th><th>检测时间</th><th>操作</th></tr></thead><tbody>${trs}</tbody></table>`;
     box.querySelectorAll('[data-lgcheck]').forEach((b) => b.addEventListener('click', () => checkLoginUi(b.dataset.lgcheck)));
     box.querySelectorAll('[data-lgrelogin]').forEach((b) => b.addEventListener('click', () => reloginUi(b.dataset.lgrelogin)));
+    box.querySelectorAll('[data-lgbrowser]').forEach((b) => b.addEventListener('click', () => checkBrowserUi(b.dataset.lgbrowser)));
     // 已存 Cookie 列：点击唤起 Cookie 明细弹窗
     box.querySelectorAll('[data-ckview]').forEach((a) => a.addEventListener('click', () => viewCookies(a.dataset.ckview)));
   } catch (e) {
@@ -626,6 +629,15 @@ async function loadLoginStatus() {
 
 async function checkLoginUi(platform) {
   const meta = $('#lgMeta');
+  // 行内反馈：该行状态列切「检测中」，按钮禁用，其余行不受影响
+  const btn = box_queryLoginBtn(platform);
+  const row = btn ? btn.closest('tr') : null;
+  const statusCell = row ? row.cells[3] : null;
+  const detailCell = row ? row.cells[4] : null;
+  const oldStatusCell = statusCell ? statusCell.innerHTML : '';
+  if (btn) btn.disabled = true;
+  if (statusCell) statusCell.innerHTML = '<span class="badge"><span class="dot" style="background:#b45309"></span>检测中…</span>';
+  if (detailCell) detailCell.textContent = '正在发真实请求验证该平台登录态，约需数秒到数十秒…';
   meta.textContent = `正在检测 ${platform} 登录态（真实请求验证，约需数秒到数十秒）…`;
   try {
     const r = await apiJson('/api/login/check', {
@@ -633,12 +645,50 @@ async function checkLoginUi(platform) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ platform }),
     });
-    meta.textContent = `${platform} 检测完成：${LOGIN_STATUS_TEXT[r.status] || r.status}`;
-    await loadLoginStatus();
+    meta.textContent = `${platform} 检测完成：${LOGIN_STATUS_TEXT[r.status] || r.status}${r.detail ? ` · ${r.detail}` : ''}`;
+    if (statusCell) {
+      statusCell.innerHTML = `<span class="badge ${loginBadgeCls(r.status)}"><span class="dot"></span>${esc(LOGIN_STATUS_TEXT[r.status] || r.status)}</span>`;
+      if (detailCell) detailCell.textContent = r.detail || '';
+    } else {
+      await loadLoginStatus();
+    }
     if ($('#platform').value === platform) updatePlatCard();
   } catch (e) {
     meta.textContent = `检测失败：${e.message}`;
+    if (statusCell) statusCell.innerHTML = oldStatusCell;
+  } finally {
+    if (btn) btn.disabled = false;
   }
+}
+
+// 「🌐 浏览器态」：headless 读取提取浏览器档案中该平台的实时登录态（已登录则同步快照）
+async function checkBrowserUi(platform) {
+  const meta = $('#lgMeta');
+  const btn = box_queryLoginBtn(platform, 'data-lgbrowser');
+  const row = btn ? btn.closest('tr') : null;
+  const statusCell = row ? row.cells[3] : null;
+  if (btn) btn.disabled = true;
+  if (statusCell) statusCell.innerHTML = '<span class="badge"><span class="dot" style="background:#b45309"></span>读取浏览器档案中…</span>';
+  meta.textContent = `正在 headless 读取 ${platform} 的提取浏览器档案（约 10~40 秒，请勿同时对该平台点「🔑登录」）…`;
+  try {
+    const r = await apiJson('/api/login/check-browser', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform }),
+    });
+    const textMap = { 'logged-in': '已登录（快照已同步）', guest: '游客态（档案内无登录 Cookie）', uncertain: '疑似登录但未确认', 'no-profile': '暂无浏览器档案（请先🔑登录）', unsupported: '该平台暂不支持浏览器态判定', error: '读取失败' };
+    meta.textContent = `${platform} 浏览器态：${textMap[r.status] || r.status}${r.detail ? ` · ${r.detail}` : ''}`;
+    await loadLoginStatus();
+  } catch (e) {
+    meta.textContent = `浏览器态读取失败：${e.message}`;
+    await loadLoginStatus();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function box_queryLoginBtn(platform, attr = 'data-lgcheck') {
+  return document.querySelector(`#loginTable [${attr}="${platform}"]`);
 }
 
 async function checkAllLoginUi() {

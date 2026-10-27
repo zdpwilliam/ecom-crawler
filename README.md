@@ -95,16 +95,21 @@ npm run collect -- --platform taobao --type product --query 手机 --strategy mo
 
 淘宝、京东等强反爬平台直接打会返回登录页/验证码。用自己的账号登录态即可绕过。
 
-**推荐：面板一键操作**——仪表盘「爬虫设置 → 登录态提取」选平台点「提取登录态（弹出浏览器登录）」，会弹出**系统 Chrome**（最大化、可正常操作），登录成功后自动检测保存，全程无需命令行。前端每 3 秒轮询，保存成功自动提示。
+**推荐：面板一键操作**——仪表盘「爬虫设置 → 登录态提取」选平台点「提取登录态（弹出浏览器登录）」，会弹出**系统 Chrome**（最大化、可正常操作），登录成功后自动检测保存，全程无需命令行。保存后自动重测并刷新登录状态表。
+
+- **持久化浏览器档案（2026-10-27）**：提取所用 Chrome 每平台一个独立档案（`data/chrome-profiles/<平台>`），Cookie/localStorage 跨次保留——重新登录时通常已带会话，多数平台无需重复扫码。
+- **🌐 浏览器态检测（登录状态表新按钮）**：headless 读取该平台提取浏览器档案中的**实时登录态**（区别于「检测」读已保存快照），判定已登录时自动把档案内最新 Cookie 同步为采集用快照。注意：受 Chrome App-Bound Encryption 安全机制限制，系统**无法直接读取你日常 Chrome** 的 Cookie，请统一用本系统弹出的提取浏览器登录。
 
 命令行等价方式：
 
 ```bash
-# 1) 交互提取：弹出系统 Chrome，检测到登录成功自动保存（关窗口有快照兜底）
+# 1) 交互提取：弹出系统 Chrome（持久化档案），检测到登录成功自动保存（关窗口有快照兜底）
 node tools/cookie-tool.js extract --platform taobao
-# 2) 从浏览器复制的 "a=1; b=2" 或 JSON 转换
+# 2) headless 读取档案实时登录态（已登录则同步快照），stdout 末行输出 JSON 结果
+node tools/cookie-tool.js probe --platform kuaishou
+# 3) 从浏览器复制的 "a=1; b=2" 或 JSON 转换
 node tools/cookie-tool.js convert --platform jd --in cookies.txt
-# 3) 查看已保存的 Cookie 文件
+# 4) 查看已保存的 Cookie 文件
 node tools/cookie-tool.js list
 ```
 

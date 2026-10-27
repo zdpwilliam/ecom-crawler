@@ -63,6 +63,16 @@ function loadCookieArr(platform) {
   }
 }
 
+/** Cookie 文件最后修改时间（秒）；无文件返回 0。用于判断「缓存是否比文件旧」。 */
+function cookieFileMtime(platform) {
+  const fp = path.join(COOKIES_DIR, `${platform}.json`);
+  try {
+    return Math.floor(fs.statSync(fp).mtimeMs / 1000);
+  } catch {
+    return 0;
+  }
+}
+
 function cookieStats(arr) {
   const now = Date.now() / 1000;
   let expired = 0;
@@ -201,11 +211,16 @@ export async function checkAll() {
   return cache;
 }
 
-/** 面板读取：已保存 Cookie 但从未检测过的平台，先补一次启发式（不发网络请求）。 */
+/** 面板读取：两类平台先补一次启发式（不发网络请求）：
+ *  ① 缓存缺失；② 缓存比 Cookie 文件旧（提取/重登保存后缓存未失效——修复「登录成功但面板仍显示未登录」）。 */
 export function getStatus({ fillMissing = false } = {}) {
   if (fillMissing) {
     for (const p of platformIds()) {
-      if (cache.results[p]) continue;
+      const cached = cache.results[p];
+      const fileMtime = cookieFileMtime(p);
+      const cachedAt = cached?.checkedAt ? Math.floor(new Date(cached.checkedAt).getTime() / 1000) : 0;
+      const stale = cached && fileMtime > cachedAt; // 文件在检测之后被更新过（如一键提取刚保存）
+      if (cached && !stale) continue;
       const need = NEED_LOGIN[p] || '推荐';
       const arr = loadCookieArr(p);
       if (need === '不需要') cache.results[p] = { platform: p, needLogin: need, status: 'none', detail: '无需登录', count: 0, expired: 0, method: '-', checkedAt: null };
@@ -221,6 +236,15 @@ export function getStatus({ fillMissing = false } = {}) {
     persist();
   }
   return { at: cache.at, results: cache.results };
+}
+
+/** 单平台检测并回写缓存（面板「检测」按钮用：否则检测结果被下一次面板读取覆盖回旧值）。 */
+export async function checkLoginCached(platform) {
+  const r = await checkLogin(platform);
+  cache.results[platform] = r;
+  cache.at = new Date().toISOString();
+  persist();
+  return r;
 }
 
 /** 手动保存登录信息：前端粘贴 Cookie JSON（Playwright/开发者工具导出的数组）。 */
