@@ -725,7 +725,11 @@ async function load(source, platformId): Promise<any> {
       await sleep(gap);
     }
   }
-  throw new Error(`抓取失败(${NETWORK.retries}次): ${lastErr?.message}`);
+  // 已知无法网页采集的平台（得物等）：无论在网络层哪一步失败，错误信息都带上专属说明，
+  // 让用户看到结论而不是裸的连接错误（round38 断言依赖；网络波动时浏览器渲染分支走不到）。
+  const hint = SCRAPE_CONFIG[platformId]?.noProductHint;
+  const suffix = hint && !String(lastErr?.message || '').includes('没有网页商城') ? `\n\n${hint}` : '';
+  throw new Error(`抓取失败(${NETWORK.retries}次): ${lastErr?.message}${suffix}`);
 }
 
 function shortUrl(u) {
