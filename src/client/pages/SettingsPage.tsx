@@ -26,6 +26,18 @@ export function SettingsPage() {
   const [lgCookieJson, setLgCookieJson] = useState('');
   const [lgSaveResult, setLgSaveResult] = useState<string | null>(null);
   const [busy, setBusy] = useState<any>({});
+  // 🩺 检测过程日志弹窗：entries 按发起顺序累积（全部检测从上到下逐平台追加）
+  const [checkLogOpen, setCheckLogOpen] = useState(false);
+  const [checkLogEntries, setCheckLogEntries] = useState<any[]>([]); // {platform, lines, done, status}
+  const upsertCheckLog = (platform: string, patch: any) => {
+    setCheckLogEntries((es: any[]) => {
+      const i = es.findIndex((e) => e.platform === platform);
+      if (i === -1) return [...es, { platform, lines: [], done: false, ...patch }];
+      const n = [...es];
+      n[i] = { ...n[i], ...patch };
+      return n;
+    });
+  };
   const [cookieModal, setCookieModal] = useState<any>(null); // {title, body}
   const ckDataRef = useRef<any[]>([]);
   const extractTimer = useRef<any>(null);
@@ -98,12 +110,20 @@ export function SettingsPage() {
     if (app.platforms.some((o: any) => o.id === platform)) app.setPlatform(platform);
     launchCookieExtract(platform, async (p) => {
       await loadLoginStatus();
-      checkLoginUi(p);
+      // 静默复测：不弹检测日志窗（弹窗会遮挡页面，自动触发的检测不应打断用户操作）
+      checkLoginUi(p, { silent: true });
     });
   }
 
-  async function checkLoginUi(platform: string) {
+  // silent=true：重登保存后的自动复测，不开弹窗只更新状态行（手动点「检测」才弹窗）
+  async function checkLoginUi(platform: string, opts?: { silent?: boolean }) {
+    const silent = !!opts?.silent;
     setBusy((b: any) => ({ ...b, [platform]: 'check' }));
+    // 弹窗展示检测验证过程日志
+    if (!silent) {
+      setCheckLogOpen(true);
+      upsertCheckLog(platform, { lines: [], done: false });
+    }
     setLgMeta(`正在检测 ${platform} 登录态（真实请求验证，约需数秒到数十秒）…`);
     try {
       const r = await apiJson('/api/login/check', {
@@ -111,10 +131,12 @@ export function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform }),
       });
+      if (!silent) upsertCheckLog(platform, { lines: r.logs || [], done: true, status: r.status, detail: r.detail });
       setLgMeta(`${platform} 检测完成：${LOGIN_STATUS_TEXT[r.status] || r.status}${r.detail ? ` · ${r.detail}` : ''}`);
       await loadLoginStatus();
       if (app.platform === platform) app.bumpPlatCard();
     } catch (e: any) {
+      if (!silent) upsertCheckLog(platform, { lines: [`请求失败：${e.message}`], done: true });
       setLgMeta(`检测失败：${e.message}`);
     } finally {
       setBusy((b: any) => {
@@ -255,16 +277,37 @@ export function SettingsPage() {
     }
   }
 
+  // 全部检测：弹窗内从上到下依次输出每个平台的检测过程日志（逐平台串行调用，完成一个出现一块）
   async function checkAllLoginUi() {
+    const plats: string[] = loginStatus?.results ? Object.keys(loginStatus.results) : [];
+    setCheckLogOpen(true);
+    setCheckLogEntries([]);
     setLgMeta('正在全量检测所有平台（逐个发真实请求，约需 1~3 分钟）…');
-    try {
-      await apiJson('/api/login/check-all', { method: 'POST' });
-      setLgMeta('全量检测完成。');
-      await loadLoginStatus();
-      app.bumpPlatCard();
-    } catch (e: any) {
-      setLgMeta('全量检测失败：' + e.message);
+    let ok = 0;
+    for (const p of plats) {
+      setBusy((b: any) => ({ ...b, [p]: 'check' }));
+      upsertCheckLog(p, { lines: [], done: false });
+      try {
+        const r = await apiJson('/api/login/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform: p }),
+        });
+        upsertCheckLog(p, { lines: r.logs || [], done: true, status: r.status, detail: r.detail });
+        if (r.status === 'valid') ok++;
+      } catch (e: any) {
+        upsertCheckLog(p, { lines: [`请求失败：${e.message}`], done: true });
+      } finally {
+        setBusy((b: any) => {
+          const n = { ...b };
+          delete n[p];
+          return n;
+        });
+      }
     }
+    setLgMeta(`全量检测完成：${plats.length ? `${ok}/${plats.length}` : '0'} 个平台有效。`);
+    await loadLoginStatus();
+    app.bumpPlatCard();
   }
 
   async function saveLoginInterval() {
@@ -449,7 +492,7 @@ export function SettingsPage() {
 
   // 清空追加档案，恢复基础真实设备池
   async function clearExtraFingerprints() {
-    if (!confirm('确定清空全部追加档案、恢复基础 12 套设备池？')) return;
+    if (!confirm('确定清空全部追加档案、恢复基础 30 套设备池？')) return;
     try {
       const r = await apiJson('/api/fingerprint/extra', { method: 'DELETE' });
       setFpResult(`✅ 已清空 ${r.removed} 套追加档案，恢复基础池（现 ${r.poolSize} 套）。`);
@@ -909,7 +952,7 @@ export function SettingsPage() {
           <p className="hint fp-note">
             勾选上方「指纹随机化」后，每次抓取从<b>真实设备指纹池</b>中抽取一套完整档案（UA ↔ 操作系统 ↔ 视口 ↔ 语言 ↔ Client Hints 严格同源），并配合代理池轮换与伪造出口 IP。
             <br />
-            <b>端型范围</b>决定从哪个子池抽档（基础池：混合 12 套 / 仅桌面 7 套 / 仅手机含平板 5 套）。
+            <b>端型范围</b>决定从哪个子池抽档（基础池：混合 30 套 / 仅桌面 10 套 / 仅手机含平板 20 套）。
             <br />
             可用下方「生成并追加至指纹池」按指定数量与端型合成新档案入池（持久化到 <code>data/fingerprints-extra.json</code>，重启保留，同样受端型范围筛选）；「清空追加档案」恢复基础池。
           </p>
@@ -1164,6 +1207,62 @@ export function SettingsPage() {
           </div>
           <div id="ckModalBody" className="modal-body">
             {cookieModal?.body}
+          </div>
+        </div>
+      </div>
+
+      {/* 检测过程日志弹窗（单平台检测 / 全部检测共用；全部检测按发起顺序从上到下逐平台追加） */}
+      <div
+        id="checkLogModal"
+        className="modal-mask"
+        hidden={!checkLogOpen}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setCheckLogOpen(false);
+        }}
+      >
+        <div className="modal" style={{ maxWidth: 760 }}>
+          <div className="modal-head">
+            <h3>🩺 登录态检测过程日志</h3>
+            <button className="btn-danger" onClick={() => setCheckLogOpen(false)}>
+              关闭
+            </button>
+          </div>
+          <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+            {!checkLogEntries.length ? (
+              <p className="count">正在启动检测…</p>
+            ) : (
+              checkLogEntries.map((e: any) => (
+                <div key={e.platform} data-checklog={e.platform} style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>
+                    {e.platform}
+                    {e.done ? (
+                      <span className="muted" style={{ marginLeft: 8 }}>
+                        —— {LOGIN_STATUS_TEXT[e.status] || (e.status ? e.status : '完成')}
+                        {e.detail ? ` · ${e.detail}` : ''}
+                      </span>
+                    ) : (
+                      <span className="badge" style={{ marginLeft: 8 }}>
+                        <span className="dot" style={{ background: '#b45309' }}></span>检测中…
+                      </span>
+                    )}
+                  </div>
+                  <pre
+                    style={{
+                      margin: '4px 0 0',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                      background: 'var(--bg-soft, #f7f7f8)',
+                      padding: '8px 10px',
+                      borderRadius: 2,
+                    }}
+                  >
+                    {e.lines && e.lines.length ? e.lines.join('\n') : '等待服务端返回…'}
+                  </pre>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -53,7 +53,7 @@ const check = (name, ok) => {
   const poolTxt = await page.locator('#fpPoolBox').innerText();
   check('池明细标题为仅桌面端子池', poolTxt.includes('仅桌面端'));
   check('池明细无移动档案（iPhone/Android/iPad 不出现）', !/iPhone|Android|iPad/.test(poolTxt));
-  check('池明细含 7 行桌面档案', (await page.locator('#fpPoolBox tbody tr').count()) === 7);
+  check('池明细含 10 行桌面档案（2026-10-27 基础池扩容 7→10）', (await page.locator('#fpPoolBox tbody tr').count()) === 10);
   // 还原 mixed
   await sel.selectOption('mixed');
   await page.waitForTimeout(1200);

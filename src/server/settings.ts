@@ -22,7 +22,7 @@ export const DEFAULTS = Object.freeze({
   usePlaywright: true, // 优先无头浏览器渲染
   randomizeFingerprint: true, // UA/IP/语言/视口 随机化
   loginCheckMin: 30, // 登录态定时检测间隔（分钟），0=关闭
-  fpMode: 'mixed', // 指纹池端型筛选：mixed=混合（全部12套）/ desktop=仅桌面 / mobile=仅手机端（含平板）
+  fpMode: 'mixed', // 指纹池端型筛选：mixed=混合（全部30套）/ desktop=仅桌面（10套）/ mobile=仅手机端含平板（20套）
   topAppKey: '', // 淘宝开放平台 AppKey（官方 API 凭证）
   topAppSecret: '', // 淘宝开放平台 AppSecret
   topSession: '', // 淘宝卖家授权 Session（可选，评价/自有商品接口需要）

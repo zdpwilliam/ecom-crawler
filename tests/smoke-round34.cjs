@@ -53,12 +53,12 @@ const check = (name, ok) => {
       visible: !box.hidden,
     };
   });
-  check('仅手机端子池标题正确', mobilePool.head.includes('仅手机端子池') && mobilePool.head.includes('5'));
-  check('仅手机端子池 5 行且全是移动档案', mobilePool.rows === 5 && mobilePool.allMobile);
+  check('仅手机端子池标题正确', mobilePool.head.includes('仅手机端子池') && mobilePool.head.includes('20'));
+  check('仅手机端子池 20 行且全是移动档案', mobilePool.rows === 20 && mobilePool.allMobile);
   check('池明细随端型切换即时更新', mobilePool.visible);
   await page.click('#fpPoolBtn'); // 收起
 
-  // 3. 切回混合端 → 展开应为 12 套（基础池），桌面+移动混合
+  // 3. 切回混合端 → 展开应为 30 套（基础池），桌面+移动混合
   await page.selectOption('#fpMode', 'mixed');
   await page.waitForTimeout(1200);
   await page.click('#fpPoolBtn');
@@ -67,7 +67,7 @@ const check = (name, ok) => {
     const rows = [...document.querySelectorAll('#fpPoolBox tbody tr')];
     return { rows: rows.length, hasDesktop: rows.some((r) => r.innerText.includes('桌面')), hasMobile: rows.some((r) => r.innerText.includes('移动')) };
   });
-  check('混合端子池 12 套且桌面/移动混合', mixedPool.rows === 12 && mixedPool.hasDesktop && mixedPool.hasMobile);
+  check('混合端子池 30 套且桌面/移动混合', mixedPool.rows === 30 && mixedPool.hasDesktop && mixedPool.hasMobile);
   await page.click('#fpPoolBtn');
 
   // 4. UI 追加：数量 2 + 仅桌面 → 结果提示 + 状态栏子池数 +2
@@ -77,22 +77,22 @@ const check = (name, ok) => {
   await page.waitForTimeout(1000);
   const appendRes = await page.evaluate(() => document.querySelector('#fpResult').textContent);
   check('追加结果提示「已生成 2 套」', appendRes.includes('已生成 2 套') && appendRes.includes('仅桌面'));
-  check('追加后全池 14 套', appendRes.includes('全池现有 14 套'));
+  check('追加后全池 32 套', appendRes.includes('全池现有 32 套'));
   check('追加样例带「追加 ·」前缀', appendRes.includes('追加 ·'));
 
   // 5. 持久化：data/fingerprints-extra.json 存在且 2 条
   const extraFile = await page.evaluate(async () => {
-    // 通过池明细接口间接验证：桌面子池应为 7+2=9
+    // 通过池明细接口间接验证：桌面子池应为 10+2=12
     const d = await (await fetch('/api/fingerprint/pool?mode=desktop')).json();
     return d.pool.length;
   });
-  check('重启持久化由文件承接（桌面子池 7+2=9）', extraFile === 9);
+  check('重启持久化由文件承接（桌面子池 10+2=12）', extraFile === 12);
 
-  // 6. 清空追加档案 → 恢复基础池 12 套
+  // 6. 清空追加档案 → 恢复基础池 30 套
   await page.click('#fpClear');
   await page.waitForTimeout(1000);
   const clearRes = await page.evaluate(() => document.querySelector('#fpResult').textContent);
-  check('清空提示恢复基础池', clearRes.includes('已清空 2 套') && clearRes.includes('现 12 套'));
+  check('清空提示恢复基础池', clearRes.includes('已清空 2 套') && clearRes.includes('现 30 套'));
 
   // 7. 追加档案参与采集抽档：refreshProfilePool 走同一 poolFor —— 用 spawn 接口的 randomFingerprint 验证
   await page.evaluate(async () => {

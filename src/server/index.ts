@@ -245,7 +245,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const r = saveCookieFile(b.platform, b.cookies);
         // 保存后立即对该平台做一次真实检测，面板即刻展示有效性
-        const checked = await checkLogin(b.platform);
+        const { logs: _omit, ...checked } = await checkLogin(b.platform);
         const cache = getStatus();
         cache.results[b.platform] = checked;
         return send(res, 200, { status: 'ok', ...r, login: checked });
@@ -606,7 +606,7 @@ const server = http.createServer(async (req, res) => {
         samples: added.slice(0, 5).map((f) => ({ device: f.device, ua: f.ua, viewport: f.viewport })),
       });
     }
-    // 清空追加档案：恢复到 12 套基础真实设备池
+    // 清空追加档案：恢复到 30 套基础真实设备池（桌面 10 + 移动含平板 20）
     if (p === '/api/fingerprint/extra' && req.method === 'DELETE') {
       const removed = clearFingerprints();
       return send(res, 200, { removed, poolSize: getFingerprintPool().length });

@@ -25993,6 +25993,17 @@
     const [lgCookieJson, setLgCookieJson] = (0, import_react7.useState)("");
     const [lgSaveResult, setLgSaveResult] = (0, import_react7.useState)(null);
     const [busy, setBusy] = (0, import_react7.useState)({});
+    const [checkLogOpen, setCheckLogOpen] = (0, import_react7.useState)(false);
+    const [checkLogEntries, setCheckLogEntries] = (0, import_react7.useState)([]);
+    const upsertCheckLog = (platform, patch) => {
+      setCheckLogEntries((es) => {
+        const i = es.findIndex((e) => e.platform === platform);
+        if (i === -1) return [...es, { platform, lines: [], done: false, ...patch }];
+        const n = [...es];
+        n[i] = { ...n[i], ...patch };
+        return n;
+      });
+    };
     const [cookieModal, setCookieModal] = (0, import_react7.useState)(null);
     const ckDataRef = (0, import_react7.useRef)([]);
     const extractTimer = (0, import_react7.useRef)(null);
@@ -26055,11 +26066,16 @@
       if (app.platforms.some((o) => o.id === platform)) app.setPlatform(platform);
       launchCookieExtract(platform, async (p) => {
         await loadLoginStatus();
-        checkLoginUi(p);
+        checkLoginUi(p, { silent: true });
       });
     }
-    async function checkLoginUi(platform) {
+    async function checkLoginUi(platform, opts) {
+      const silent = !!opts?.silent;
       setBusy((b) => ({ ...b, [platform]: "check" }));
+      if (!silent) {
+        setCheckLogOpen(true);
+        upsertCheckLog(platform, { lines: [], done: false });
+      }
       setLgMeta(`\u6B63\u5728\u68C0\u6D4B ${platform} \u767B\u5F55\u6001\uFF08\u771F\u5B9E\u8BF7\u6C42\u9A8C\u8BC1\uFF0C\u7EA6\u9700\u6570\u79D2\u5230\u6570\u5341\u79D2\uFF09\u2026`);
       try {
         const r = await apiJson("/api/login/check", {
@@ -26067,10 +26083,12 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ platform })
         });
+        if (!silent) upsertCheckLog(platform, { lines: r.logs || [], done: true, status: r.status, detail: r.detail });
         setLgMeta(`${platform} \u68C0\u6D4B\u5B8C\u6210\uFF1A${LOGIN_STATUS_TEXT[r.status] || r.status}${r.detail ? ` \xB7 ${r.detail}` : ""}`);
         await loadLoginStatus();
         if (app.platform === platform) app.bumpPlatCard();
       } catch (e) {
+        if (!silent) upsertCheckLog(platform, { lines: [`\u8BF7\u6C42\u5931\u8D25\uFF1A${e.message}`], done: true });
         setLgMeta(`\u68C0\u6D4B\u5931\u8D25\uFF1A${e.message}`);
       } finally {
         setBusy((b) => {
@@ -26197,15 +26215,35 @@
       }
     }
     async function checkAllLoginUi() {
+      const plats = loginStatus?.results ? Object.keys(loginStatus.results) : [];
+      setCheckLogOpen(true);
+      setCheckLogEntries([]);
       setLgMeta("\u6B63\u5728\u5168\u91CF\u68C0\u6D4B\u6240\u6709\u5E73\u53F0\uFF08\u9010\u4E2A\u53D1\u771F\u5B9E\u8BF7\u6C42\uFF0C\u7EA6\u9700 1~3 \u5206\u949F\uFF09\u2026");
-      try {
-        await apiJson("/api/login/check-all", { method: "POST" });
-        setLgMeta("\u5168\u91CF\u68C0\u6D4B\u5B8C\u6210\u3002");
-        await loadLoginStatus();
-        app.bumpPlatCard();
-      } catch (e) {
-        setLgMeta("\u5168\u91CF\u68C0\u6D4B\u5931\u8D25\uFF1A" + e.message);
+      let ok = 0;
+      for (const p of plats) {
+        setBusy((b) => ({ ...b, [p]: "check" }));
+        upsertCheckLog(p, { lines: [], done: false });
+        try {
+          const r = await apiJson("/api/login/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform: p })
+          });
+          upsertCheckLog(p, { lines: r.logs || [], done: true, status: r.status, detail: r.detail });
+          if (r.status === "valid") ok++;
+        } catch (e) {
+          upsertCheckLog(p, { lines: [`\u8BF7\u6C42\u5931\u8D25\uFF1A${e.message}`], done: true });
+        } finally {
+          setBusy((b) => {
+            const n = { ...b };
+            delete n[p];
+            return n;
+          });
+        }
       }
+      setLgMeta(`\u5168\u91CF\u68C0\u6D4B\u5B8C\u6210\uFF1A${plats.length ? `${ok}/${plats.length}` : "0"} \u4E2A\u5E73\u53F0\u6709\u6548\u3002`);
+      await loadLoginStatus();
+      app.bumpPlatCard();
     }
     async function saveLoginInterval() {
       const v = Number(lgInterval);
@@ -26374,7 +26412,7 @@ ${sample}`
       }
     }
     async function clearExtraFingerprints() {
-      if (!confirm("\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8\u8FFD\u52A0\u6863\u6848\u3001\u6062\u590D\u57FA\u7840 12 \u5957\u8BBE\u5907\u6C60\uFF1F")) return;
+      if (!confirm("\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8\u8FFD\u52A0\u6863\u6848\u3001\u6062\u590D\u57FA\u7840 30 \u5957\u8BBE\u5907\u6C60\uFF1F")) return;
       try {
         const r = await apiJson("/api/fingerprint/extra", { method: "DELETE" });
         setFpResult(`\u2705 \u5DF2\u6E05\u7A7A ${r.removed} \u5957\u8FFD\u52A0\u6863\u6848\uFF0C\u6062\u590D\u57FA\u7840\u6C60\uFF08\u73B0 ${r.poolSize} \u5957\uFF09\u3002`);
@@ -26813,7 +26851,7 @@ ${sum}
             "\u4E2D\u62BD\u53D6\u4E00\u5957\u5B8C\u6574\u6863\u6848\uFF08UA \u2194 \u64CD\u4F5C\u7CFB\u7EDF \u2194 \u89C6\u53E3 \u2194 \u8BED\u8A00 \u2194 Client Hints \u4E25\u683C\u540C\u6E90\uFF09\uFF0C\u5E76\u914D\u5408\u4EE3\u7406\u6C60\u8F6E\u6362\u4E0E\u4F2A\u9020\u51FA\u53E3 IP\u3002",
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("br", {}),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u7AEF\u578B\u8303\u56F4" }),
-            "\u51B3\u5B9A\u4ECE\u54EA\u4E2A\u5B50\u6C60\u62BD\u6863\uFF08\u57FA\u7840\u6C60\uFF1A\u6DF7\u5408 12 \u5957 / \u4EC5\u684C\u9762 7 \u5957 / \u4EC5\u624B\u673A\u542B\u5E73\u677F 5 \u5957\uFF09\u3002",
+            "\u51B3\u5B9A\u4ECE\u54EA\u4E2A\u5B50\u6C60\u62BD\u6863\uFF08\u57FA\u7840\u6C60\uFF1A\u6DF7\u5408 30 \u5957 / \u4EC5\u684C\u9762 10 \u5957 / \u4EC5\u624B\u673A\u542B\u5E73\u677F 20 \u5957\uFF09\u3002",
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("br", {}),
             "\u53EF\u7528\u4E0B\u65B9\u300C\u751F\u6210\u5E76\u8FFD\u52A0\u81F3\u6307\u7EB9\u6C60\u300D\u6309\u6307\u5B9A\u6570\u91CF\u4E0E\u7AEF\u578B\u5408\u6210\u65B0\u6863\u6848\u5165\u6C60\uFF08\u6301\u4E45\u5316\u5230 ",
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "data/fingerprints-extra.json" }),
@@ -27011,6 +27049,52 @@ ${sum}
               ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { id: "ckModalBody", className: "modal-body", children: cookieModal?.body })
+          ] })
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        "div",
+        {
+          id: "checkLogModal",
+          className: "modal-mask",
+          hidden: !checkLogOpen,
+          onClick: (e) => {
+            if (e.target === e.currentTarget) setCheckLogOpen(false);
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "modal", style: { maxWidth: 760 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "modal-head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { children: "\u{1FA7A} \u767B\u5F55\u6001\u68C0\u6D4B\u8FC7\u7A0B\u65E5\u5FD7" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "btn-danger", onClick: () => setCheckLogOpen(false), children: "\u5173\u95ED" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "modal-body", style: { maxHeight: "62vh", overflowY: "auto" }, children: !checkLogEntries.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "count", children: "\u6B63\u5728\u542F\u52A8\u68C0\u6D4B\u2026" }) : checkLogEntries.map((e) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { "data-checklog": e.platform, style: { marginBottom: 14 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { fontWeight: 700, fontSize: 13 }, children: [
+                e.platform,
+                e.done ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "muted", style: { marginLeft: 8 }, children: [
+                  "\u2014\u2014 ",
+                  LOGIN_STATUS_TEXT[e.status] || (e.status ? e.status : "\u5B8C\u6210"),
+                  e.detail ? ` \xB7 ${e.detail}` : ""
+                ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "badge", style: { marginLeft: 8 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "dot", style: { background: "#b45309" } }),
+                  "\u68C0\u6D4B\u4E2D\u2026"
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                "pre",
+                {
+                  style: {
+                    margin: "4px 0 0",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    background: "var(--bg-soft, #f7f7f8)",
+                    padding: "8px 10px",
+                    borderRadius: 2
+                  },
+                  children: e.lines && e.lines.length ? e.lines.join("\n") : "\u7B49\u5F85\u670D\u52A1\u7AEF\u8FD4\u56DE\u2026"
+                }
+              )
+            ] }, e.platform)) })
           ] })
         }
       ),
