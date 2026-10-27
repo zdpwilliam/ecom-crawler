@@ -2,6 +2,8 @@
 
 可扩展的电商平台数据采集与展示平台。**官方 API 优先 → 可插拔爬虫回退 → 商品详情页评论/问答/SPU-SKU 一并采回**。
 
+> ⚠️ **免责声明**：本项目仅供学习研究，按现状提供、不附任何担保；爬取行为的合法合规性取决于使用方式，**责任由使用者自行承担**。请遵守目标站点条款与 `robots.txt`、只采公开数据、不碰个人信息。生产环境请优先使用官方开放 API。完整声明与合规设计见 [COMPLIANCE.md](COMPLIANCE.md)。
+
 ## 核心能力
 
 - **官方 API 优先架构**：淘宝/天猫已接入淘宝开放平台（TOP）真实调用——系统设置页填 AppKey/AppSecret（可选卖家 Session）即生效，工作台策略 auto 自动优先官方、失败回退爬取；其余平台预置官方适配器位（京东宙斯 / 拼多多开放平台 / 亚马逊 SP-API 可按同构扩展）。
@@ -9,7 +11,7 @@
 - **通用启发式解析**：浏览器渲染后，直接在页面内扫描「商品图 + 链接 + 价格」三要素抽取，**无需逐个站点校准选择器**即可对绝大多数电商列表页抽到标题/链接/图片；另有 CSS 类选择器与 JSON-LD 兜底。
 - **商品 + 详情页评论 + 公开问答一起采**：勾选「带详情」后，自动跟进 Top-N 商品详情页，一并抓取**评论**与**公开问答（问大家/买家问答）**，全部落库关联。
 - **SQLite 数据库存储**：用 Node 内置 `node:sqlite` 取代旧版 JSON 文件，支持 SQL 查询 / 索引 / 定时任务与运行记录。旧 `store.json` 首次启动自动迁移。
-- **存储后端可切换（SQLite / 本地 MongoDB）**：通过 `STORE_BACKEND` 环境变量在嵌入式 SQLite 与本地 MongoDB 文档数据库之间切换，业务代码零改动（统一 `server/storage.ts` 门面）。
+- **存储后端可切换（SQLite / 本地 MongoDB）**：通过 `STORE_BACKEND` 环境变量在嵌入式 SQLite 与本地 MongoDB 文档数据库之间切换，业务代码零改动（统一 `src/server/storage.ts` 门面）。
 - **存储管理（查看位置 + 清理）**：仪表盘与 API 可随时查看数据目录、数据库文件、各目录大小与记录数；支持按类型/平台/关键字范围**安全清理**（弹框列出将删除的数据明细，二次确认）。「数据管理」页与「存储管理」共用同一清理弹框。
 - **请求指纹随机化（端型可选 + 统计采样）**：从**固定真实设备池**抽取完整档案（UA ↔ 平台 ↔ 视口 ↔ 语言 ↔ Client Hints 严格同源，30 套），支持按端型筛选——**混合端（30 套）/ 仅桌面端（10 套）/ 仅手机端含平板（20 套）**，系统设置页切换保存即生效；抽档按**真实流量分布加权**（移动端/Chrome 系/国产浏览器高频，而非均匀随机）；每次请求还随机生成出口 IP（伪造 X-Forwarded-For）并配合代理池轮换。
 - **会话池三元绑定（SessionPool）**：Cookie + 代理 IP + 指纹打包成一个「虚拟用户」整体轮换（对齐 Crawlee SessionPool 范式）；**登录态通道强制粘性**——同一平台整个采集运行期固定同一会话，杜绝「烧掉的 IP 配新 Cookie」的自相矛盾组合。
@@ -41,7 +43,7 @@ npm run collect -- --platform taobao --type product --query 手机 --strategy mo
 
 ## 真实爬取（scrape 策略）
 
-`server/adapters/scrape/generic.ts` 是**可运行的真实爬取引擎**，不是骨架。
+`src/server/adapters/scrape/generic.ts` 是**可运行的真实爬取引擎**，不是骨架。
 
 - **网络引擎**：每次请求随机 UA + 请求间随机延迟 + 失败指数退避重试 + 代理池轮换；优先 Playwright（无头浏览器，JS 渲染必需，含滚动触发懒加载），降级原生 `fetch`（服务器渲染页，支持 undici 代理）。
 - **解析策略**：① 浏览器内通用启发式（扫「图+链+价」，无需校准，覆盖最广）；② CSS 类选择器（按站点校准，精准字段）；③ JSON-LD 结构化数据；④ `--verify` 校准诊断。
@@ -67,11 +69,11 @@ npm run collect -- --platform taobao --type product --query 手机 --strategy mo
 
 ### 京东 / 淘宝字段校准
 
-`server/adapters/scrape/config.ts` 中 `jd` / `taobao` 已补充分类选择器、`detailUrl`（详情页构造）、以及 `qa`（问大家）选择器模板。引擎优先用浏览器内启发式保底抽「标题+链接+图片+价格」，需要精确字段时再校准选择器或 `--verify`。
+`src/server/adapters/scrape/config.ts` 中 `jd` / `taobao` 已补充分类选择器、`detailUrl`（详情页构造）、以及 `qa`（问大家）选择器模板。引擎优先用浏览器内启发式保底抽「标题+链接+图片+价格」，需要精确字段时再校准选择器或 `--verify`。
 
 ### 唯品会专项：mapi 直连通道
 
-唯品会搜索页前端行为不稳定（经常只渲染模板壳、不触发商品 XHR），因此 vip 配置了 `directApi` 直连通道（`server/adapters/scrape/vip-api.ts`）：直接调 `mapi-pc.vip.com` 的 `search/product/rank`（拿 pid）→ `product/module/list/v2`（`scene=search&productIds=...` 拿完整字段；**单批最多 50 个 pid**，超出自动按 50 分批请求），带登录态 Cookie 即可访问。**优先级最高、3 秒出结果**，字段含品牌/类目/特卖价/市场价/折扣；失败自动回退浏览器渲染路径（浏览器路径也会捕获 mapi 响应做结构化解析）。
+唯品会搜索页前端行为不稳定（经常只渲染模板壳、不触发商品 XHR），因此 vip 配置了 `directApi` 直连通道（`src/server/adapters/scrape/vip-api.ts`）：直接调 `mapi-pc.vip.com` 的 `search/product/rank`（拿 pid）→ `product/module/list/v2`（`scene=search&productIds=...` 拿完整字段；**单批最多 50 个 pid**，超出自动按 50 分批请求），带登录态 Cookie 即可访问。**优先级最高、3 秒出结果**，字段含品牌/类目/特卖价/市场价/折扣；失败自动回退浏览器渲染路径（浏览器路径也会捕获 mapi 响应做结构化解析）。
 
 ### 各平台直连通道一览（2026-10-14 补齐京东详情/华为商城全链路）
 
@@ -127,7 +129,7 @@ npm test   # = node scripts/run-all-smoke.cjs：13 套冒烟+单元测试统一�
 node tools/test-cookie-tool.mjs   # 仅登录自动关闭决策单元测试（秒级）
 ```
 
-冒烟脚本逐轮沉淀在 `tools/smoke-round*.cjs`；全量入口顺序执行并汇总退出码。登录态提取的「自动关闭」走双闸判定（`tools/cookie-tool.ts`）：cookie 标记命中 + 页面级二次确认（小红书游客态也会种 `web_session`，须确认 `.login-btn` 登录按钮消失才算登录）。
+冒烟脚本逐轮沉淀在 `tests/smoke-round*.cjs`；全量入口顺序执行并汇总退出码。登录态提取的「自动关闭」走双闸判定（`tools/cookie-tool.ts`）：cookie 标记命中 + 页面级二次确认（小红书游客态也会种 `web_session`，须确认 `.login-btn` 登录按钮消失才算登录）。
 
 ### 离线验证（无需浏览器 / 外网）
 
@@ -178,7 +180,7 @@ echo "http://user:pass@host:port" >> data/proxies.txt
 
 字段提取为三层策略（按顺序回退）：
 1. **浏览器内启发式**：扫「商品图 + 链接 + 价格」三要素，免校准、覆盖最广，但字段最少（标题/价格/图片/链接）；
-2. **CSS 类选择器**：`server/adapters/scrape/config.ts` 按平台维护，字段最全（类目/品牌/店铺/销量等），站点改版时需要校准；
+2. **CSS 类选择器**：`src/server/adapters/scrape/config.ts` 按平台维护，字段最全（类目/品牌/店铺/销量等），站点改版时需要校准；
 3. **JSON-LD 结构化数据**：页面内嵌 `application/ld+json` 的兜底解析。
 
 诊断方法（仪表盘「运行采集 → 字段提取诊断」）：
@@ -258,7 +260,7 @@ STORE_BACKEND=mongodb MONGODB_URI=mongodb://localhost:27017 npm start
 
 - 启用后，采集数据与定时任务/运行记录分别存入 MongoDB 集合：`products` / `reviews` / `qa` / `jobs` / `job_runs`（库名默认 `ecom_crawler`，可用 `MONGODB_DB` 覆盖；`chats` 为历史遗留集合，不再写入）。
 - 文档按驼峰字段原样存储，`id` 为主键（`replaceOne upsert`），与 SQLite 行结构兼容，便于迁移与跨库查询。
-- 全接口 async 统一封装在 `server/storage.ts` 门面：业务层（采集/导出/调度/API）**无需改动**即可切换后端。
+- 全接口 async 统一封装在 `src/server/storage.ts` 门面：业务层（采集/导出/调度/API）**无需改动**即可切换后端。
 - 若 MongoDB 未启动，`storageInfo()` 会优雅返回 `connected:false` 与连接错误，不会让服务崩溃；真正读写时才会报错提示。
 
 ## 存储管理（查看位置 + 清空数据）
@@ -316,49 +318,58 @@ curl -X POST http://localhost:4311/api/storage/clear \
 
 ## 目录结构
 
-> **TypeScript 工程**：服务端与前端 UI 源码均为 `.ts`（Node 22.18+ 原生 type-stripping 直接运行，零构建；`src/ui/app.ts` 经 esbuild 打包为 `public/app.js`）。改前端后跑 `npm run build:ui`；类型检查 `npm run typecheck`。测试/探针脚本保持 .cjs/.mjs。
+> **TypeScript 工程**：服务端与前端源码均为 `.ts`（Node 22 原生 type-stripping 直接运行，零构建；`src/client/main.tsx` 为 React 18 入口，经 esbuild 打包为 `public/app.js`）。改前端后跑 `npm run build:ui`；类型检查 `npm run typecheck`（双 tsconfig：server/client）。测试/冒烟脚本保持 .cjs/.mjs。
 
 ```
-server/
-  types.ts              数据契约与常量（product/review/qa）
-  compliance.ts         限流 + 爬取安全总闸
-  db.ts                 SQLite 存储（node:sqlite）+ jobs/job_runs + 查询/导出/清空
-  storage.ts            存储门面（按 STORE_BACKEND 选 SQLite / MongoDB，全 async）
-  storage-mongo.ts      本地 MongoDB 文档数据库后端（惰性依赖 mongodb）
-  fingerprint.ts        请求指纹随机化（真实设备池 + 统计加权采样 / 出口 IP / 语言 / 视口）
-  session-pool.ts       会话池（Cookie+代理+指纹三元绑定，登录态通道粘性 + 封禁语义化）
-  http-client.ts        统一 HTTP 客户端（impit TLS 伪装 + undici 兜底）
-  fp-inject.ts          渲染层指纹注入（navigator/WebGL/Canvas 与设备档案一致）
-  store.ts              兼容层（再导出 storage.ts）
-  export.ts             CSV / JSON 导出
-  proxy-pool.ts         代理池（轮换 + 健康度冷却）
-  scheduler.ts          定时采集引擎
-  collectors.ts         编排：官方→OpenCLI→爬取 三级回退；关联评论/问答落库
-  index.ts              HTTP 服务 + API
-  test-run.ts           一键测试（列表→详情→评价→问答；成功数据自动入库）
-  adapters/
-    base.ts             适配器基类（含 guard 安全闸门）
-    registry.ts         平台注册表（可扩展性核心）
-    mock.ts             无凭证可跑通的 mock 适配层
-    official/taobao-top.ts   淘宝 TOP 官方API（真实签名请求+字段映射；凭证走设置页或 TOP_APP_KEY/SECRET/SESSION 环境变量）
-    official/opencli-adapter.ts  OpenCLI 桥接：复用本机 Chrome 登录态采集（taobao/jd/xianyu/amazon；需 @jackwener/opencli + Browser Bridge 扩展）
-    scrape/generic.ts        真实爬取引擎(Playwright/fetch + 多策略解析 + 详情页评论/问答)
-    scrape/config.ts         各平台选择器 + UA池 + 网络参数 + 代理/详情/问答配置
-tools/
-  ensure-browser.ts     自动安装无头浏览器（postinstall + 启动自检）
-  cookie-tool.ts        Cookie 提取小工具（extract / convert / list）
+src/
+  server/
+    types.ts              数据契约与常量（product/review/qa）
+    paths.ts              路径单一来源（PROJECT_ROOT/DATA_DIR/...）
+    compliance.ts         限流 + PII 脱敏 + 爬取安全总闸（ALLOW_SCRAPING）
+    db.ts                 SQLite 存储（node:sqlite）+ jobs/job_runs + 查询/导出/清空
+    storage.ts            存储门面（按 STORE_BACKEND 选 SQLite / MongoDB，全 async）
+    storage-mongo.ts      本地 MongoDB 文档数据库后端（惰性依赖 mongodb）
+    fingerprint.ts        请求指纹随机化（真实设备池 30 套 + 统计加权采样 / 出口 IP / Client Hints）
+    session-pool.ts       会话池（Cookie+代理+指纹三元绑定，登录态通道粘性 + retire/markBad）
+    http-client.ts        统一 HTTP 客户端（impit TLS 伪装 + undici 兜底）
+    fp-inject.ts          渲染层指纹注入（navigator/WebGL/Canvas 与设备档案一致）
+    login-check.ts        登录态检测（mtop/订单中心探针 + 过程日志）
+    export.ts             CSV / JSON 导出
+    proxy-pool.ts         代理池（轮换 + 健康度冷却）
+    scheduler.ts          定时采集引擎
+    collectors.ts         编排：官方→OpenCLI→爬取 三级回退；关联评论/问答落库
+    index.ts              HTTP 服务 + API
+    test-run.ts           一键测试（列表→详情→评价→问答；成功数据自动入库）
+    adapters/
+      base.ts             适配器基类（含 guard 安全闸门）
+      registry.ts         平台注册表（可扩展性核心）
+      mock.ts             无凭证可跑通的 mock 适配层
+      official/taobao-top.ts       淘宝 TOP 官方API（真实签名请求+字段映射）
+      official/opencli-adapter.ts  OpenCLI 桥接：复用本机 Chrome 登录态采集
+      scrape/generic.ts   真实爬取引擎(Patchright/Playwright + 会话池 + 多策略解析 + 详情页评论/问答)
+      scrape/config.ts    各平台选择器 + UA池 + 网络参数 + 代理/详情/问答配置
+      scrape/adaptive.ts  自适应解析（结构快照 + 相似度重定位）
+      scrape/mtop-api.ts  淘宝/闲鱼 mtop 签名直连（TLS 伪装）
+      scrape/vip-api.ts   唯品会 mapi 直连（rank+list 两段式）
+      scrape/{jd,suning,amazon,huawei}-api.ts  其余平台直连通道
+  client/                 React 18 前端（main.tsx + pages/ + components/，esbuild 打包 public/app.js）
 scripts/
-  run-collect.ts        CLI 采集（支持 --withDetails / --detailFixture / --verify）
-  scheduler.ts          独立定时采集调度器
-  export-data.ts        CLI 导出
-public/                 仪表盘前端
-data/                   数据库(ecom.db) + 导出(exports/) + Cookie(cookies/) + 示例(fixtures/)
+  run-collect.ts          CLI 采集（支持 --withDetails / --detailFixture / --verify）
+  scheduler.ts            独立定时采集调度器
+  export-data.ts          CLI 导出
+  run-all-smoke.cjs       全量测试入口（npm test）
+tests/                    冒烟 + 单元测试（smoke-round*.cjs / test-*.mjs）
+tools/
+  ensure-browser.ts       自动安装无头浏览器（postinstall + 启动自检）
+  cookie-tool.ts          Cookie 提取小工具（extract / convert / list）
+public/                   index.html 薄壳 + 打包产物 app.js
+data/                     数据库(ecom.db) + 导出(exports/) + Cookie(cookies/) + 审计日志(audit.log)
 ```
 
 ## 如何新增一个平台
 
-1. 在 `server/adapters/` 下新建适配器类（继承 `BaseAdapter`），实现 `collectProduct` / `collectReviews` / `collectQa`。
-2. 在 `server/adapters/registry.ts` 的 `PLATFORMS` 数组追加：
+1. 在 `src/server/adapters/` 下新建适配器类（继承 `BaseAdapter`），实现 `collectProduct` / `collectReviews` / `collectQa`。
+2. 在 `src/server/adapters/registry.ts` 的 `PLATFORMS` 数组追加：
    ```js
    { id: 'newplatform', name: '新平台', official: NewPlatformAdapter, scrape: GenericScrapeAdapter },
    ```
