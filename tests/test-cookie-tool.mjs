@@ -38,6 +38,18 @@ check('抖音 marker：sessionid 命中', LOGIN_MARKERS.douyin(DOUYIN_LOGGED) ==
 // 3. 小红书必须有页面级二次确认（防误判复发的结构保证）
 check('LOGIN_CONFIRM.xiaohongshu 已定义', typeof LOGIN_CONFIRM.xiaohongshu === 'function');
 
+// 4. VIP marker（Round 43 bug：脏游客档案 VipUINFO=luc:b|suc:b 被旧判定误判已登录 → 弹窗 3 秒即自动关闭）
+const VIP_GUEST_A = [{ name: 'VipUINFO', value: 'luc%3Aa%7Csuc%3Aa' }];
+const VIP_GUEST_B = [{ name: 'VipUINFO', value: 'luc%3Ab%7Csuc%3Ab%7Cbct%3Ac_new%7Cul%3A3105' }]; // 脏档案实测值
+const VIP_LOGGED = [{ name: 'VipUINFO', value: 'luc%3A2%7Csuc%3A1%7Cnick%3Atester' }];
+const VIP_LOGGED_LONG = [{ name: 'VipUINFO', value: 'luc%3A9f8e7d%7Csuc%3A1%7Cul%3A5' }];
+check('VIP marker：游客 a 变体不命中', LOGIN_MARKERS.vip(VIP_GUEST_A) === false);
+check('VIP marker：游客 b 变体（脏档案实测值）不命中', LOGIN_MARKERS.vip(VIP_GUEST_B) === false);
+check('VIP marker：无 VipUINFO 不命中', LOGIN_MARKERS.vip([{ name: 'mars_cid', value: 'x' }]) === false);
+check('VIP marker：非游客形态命中（短值数字头）', LOGIN_MARKERS.vip(VIP_LOGGED) === true);
+check('VIP marker：非游客形态命中（长 id 头）', LOGIN_MARKERS.vip(VIP_LOGGED_LONG) === true);
+check('LOGIN_CONFIRM.vip 已定义（页面级二次确认）', typeof LOGIN_CONFIRM.vip === 'function');
+
 const pass = results.filter((r) => r.ok).length;
 console.log(`\n通过 ${pass}/${results.length}`);
 process.exit(pass === results.length ? 0 : 1);

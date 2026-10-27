@@ -104,6 +104,25 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { stack: TECH_STACK, matrix: TECH_MATRIX });
     }
 
+    // 平台通道诊断：按技术通道独立试跑搜索链路（直连接口 / 浏览器渲染 / fetch 直取），
+    // 通道间不回退，产出可横向对比结果与最优通道结论（数据抓取技术面板「平台通道诊断」）。
+    // 真实网络请求，浏览器通道可能需要 30~90 秒。
+    if (p === '/api/tech-diagnose' && req.method === 'POST') {
+      const b = await readBody(req);
+      const platform = String(b.platform || '').trim();
+      const query = String(b.query || '').trim() || '手机';
+      const adapter = getScrapeAdapter(platform);
+      if (!adapter || typeof (adapter as any).diagnoseChannels !== 'function') {
+        return send(res, 400, { error: `平台 ${platform || '(空)'} 不支持通道诊断` });
+      }
+      try {
+        const r = await (adapter as any).diagnoseChannels(query);
+        return send(res, 200, r);
+      } catch (e: any) {
+        return send(res, 500, { error: `通道诊断失败：${e.message}` });
+      }
+    }
+
     // 运行日志（前端「采集中」模块轮询增量，滚动展示采集过程）
     if (p === '/api/logs') {
       const since = Number(url.searchParams.get('since'));

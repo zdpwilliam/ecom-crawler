@@ -26308,6 +26308,28 @@ ${r.login?.detail || ""}`
     (0, import_react7.useEffect)(() => {
       apiJson("/api/tech-matrix").then(setTech).catch((e) => setTech({ error: e.message }));
     }, []);
+    const [diagPlat, setDiagPlat] = (0, import_react7.useState)("vip");
+    const [diagQuery, setDiagQuery] = (0, import_react7.useState)("\u624B\u673A");
+    const [diagRunning, setDiagRunning] = (0, import_react7.useState)(false);
+    const [diagResult, setDiagResult] = (0, import_react7.useState)(null);
+    const [diagError, setDiagError] = (0, import_react7.useState)("");
+    async function runTechDiag() {
+      setDiagRunning(true);
+      setDiagError("");
+      setDiagResult(null);
+      try {
+        const r = await apiJson("/api/tech-diagnose", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: diagPlat, query: diagQuery })
+        });
+        setDiagResult(r);
+      } catch (e) {
+        setDiagError("\u8BCA\u65AD\u5931\u8D25\uFF1A" + e.message);
+      } finally {
+        setDiagRunning(false);
+      }
+    }
     const [settings, setSettings] = (0, import_react7.useState)({});
     const [settingsResult, setSettingsResult] = (0, import_react7.useState)("");
     const loadSettingsUi = (0, import_react7.useCallback)(async () => {
@@ -26943,61 +26965,6 @@ ${sum}
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u6570\u636E\u6293\u53D6\u6280\u672F" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "0 0 10px" }, children: [
-          "\u672C\u7CFB\u7EDF\u5B9E\u9645\u4F7F\u7528\u7684\u6293\u53D6\u6280\u672F\u4E0E\u5404\u5E73\u53F0\u5F53\u524D\u901A\u9053\u3002",
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u901A\u9053\u914D\u7F6E\u4E0E\u4EE3\u7801\u5B9E\u73B0\u4E00\u4E00\u5BF9\u5E94" }),
-          "\uFF08\u641C\u7D22/\u8BE6\u60C5\u76F4\u8FDE\u4E0E\u5426\u7531\u5404\u5E73\u53F0\u9002\u914D\u5668\u914D\u7F6E\u51B3\u5B9A\uFF09\uFF1B\u300C\u4E00\u952E\u6D4B\u8BD5\u300D\u5F39\u7A97\u4E2D\u6BCF\u4E00\u6B65\u4E5F\u4F1A\u6807\u6CE8\u672C\u6B65\u9AA4\u4F7F\u7528\u7684\u6280\u672F\u901A\u9053\u3002\u6240\u6709\u300C\u76F4\u8FDE\u63A5\u53E3\u300D\u5747\u4E3A\u9006\u5411\u7F51\u9875\u7AEF\u6570\u636E\u63A5\u53E3\uFF0C",
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u975E\u5B98\u65B9\u5F00\u653E API" }),
-          "\u3002"
-        ] }),
-        tech?.error ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { style: { color: "#9a3412" }, children: [
-          "\u6280\u672F\u77E9\u9635\u52A0\u8F7D\u5931\u8D25\uFF1A",
-          tech.error
-        ] }) : !tech ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "muted", children: "\u52A0\u8F7D\u4E2D\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", open: true, style: { marginBottom: 12 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("summary", { children: [
-              "\u5168\u7AD9\u6280\u672F\u6808\uFF08",
-              tech.stack.length,
-              " \u9879\uFF0C\u70B9\u51FB\u6298\u53E0\uFF09"
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { style: { marginTop: 8 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 200 }, children: "\u6280\u672F" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BF4\u660E" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 220 }, children: "\u5B9E\u73B0\u843D\u70B9" })
-              ] }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: tech.stack.map((t) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.desc }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { style: { fontSize: 11 }, children: t.impl }) })
-              ] }, t.key)) })
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "table-wrap", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u5E73\u53F0" }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u641C\u7D22\u901A\u9053" }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BE6\u60C5\u901A\u9053" }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u767B\u5F55\u8981\u6C42" }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u54EA\u79CD\u6280\u672F\u6548\u679C\u6700\u597D" })
-            ] }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: Object.entries(tech.matrix).map(([id, t]) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.search }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.detail }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "nowrap" }, children: t.needLogin === "\u5FC5\u9700" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { style: { color: "#9a3412" }, children: "\u5FC5\u9700" }) : t.needLogin }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.best })
-            ] }, id)) })
-          ] }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
-            "\u964D\u7EA7\u94FE\u8DEF\u7EDF\u4E00\u4E3A\uFF1A",
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u76F4\u8FDE\u63A5\u53E3 \u2192 \u6D4F\u89C8\u5668\u6E32\u67D3\uFF08Patchright\uFF09\u2192 fetch \u76F4\u53D6\uFF08TLS \u4F2A\u88C5\uFF09" }),
-            "\uFF0C\u4EFB\u4E00\u5C42\u5931\u8D25\u81EA\u52A8\u6362\u4F1A\u8BDD/\u6307\u7EB9\u91CD\u8BD5\uFF1B\u8BE6\u60C5\u9875\u5728\u76F4\u8FDE\u5931\u8D25\u65F6\u7531\u6D4F\u89C8\u5668\u54CD\u5E94\u6355\u83B7 + \u5185\u5D4C JSON \u6DF1\u641C\u515C\u5E95\u3002"
-          ] })
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
         /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u4EE3\u7406\u6C60" }),
         /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { id: "proxyInfo", className: "kv", children: proxyInfo }),
@@ -27093,6 +27060,131 @@ ${sum}
           "\uFF0C\u786E\u8BA4\u540E\u81EA\u52A8",
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u8FC1\u79FB\u5168\u90E8\u91C7\u96C6\u6570\u636E\u4E0E\u5B9A\u65F6\u4EFB\u52A1" }),
           "\u5230\u76EE\u6807\u5E93\uFF08\u8FC1\u79FB\u671F\u95F4\u5C55\u793A\u8FDB\u5EA6\u6761\uFF0C\u5B8C\u6210\u540E\u5F39\u7A97\u63D0\u9192\uFF09\u3002\u8FC1\u79FB\u4E3A\u975E\u7834\u574F\u5F0F\uFF1A\u6E90\u5E93\u6570\u636E\u539F\u6837\u4FDD\u7559\uFF0C\u53EF\u968F\u65F6\u5207\u56DE\uFF1B\u4EFB\u52A1\u8FD0\u884C\u8BB0\u5F55\u968F\u5404\u81EA\u540E\u7AEF\u4FDD\u7559\u3002\u6570\u636E\u6E05\u7406\u5165\u53E3\u5728\u300C\u6570\u636E\u7BA1\u7406\u300D\u9875\uFF08\u{1F5D1} \u6E05\u7406\u6570\u636E\uFF0C\u5F39\u6846\u786E\u8BA4\uFF09\u3002"
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u6570\u636E\u6293\u53D6\u6280\u672F" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "0 0 10px" }, children: [
+          "\u672C\u7CFB\u7EDF\u5B9E\u9645\u4F7F\u7528\u7684\u6293\u53D6\u6280\u672F\u4E0E\u5404\u5E73\u53F0\u5F53\u524D\u901A\u9053\u3002",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u901A\u9053\u914D\u7F6E\u4E0E\u4EE3\u7801\u5B9E\u73B0\u4E00\u4E00\u5BF9\u5E94" }),
+          "\uFF08\u641C\u7D22/\u8BE6\u60C5\u76F4\u8FDE\u4E0E\u5426\u7531\u5404\u5E73\u53F0\u9002\u914D\u5668\u914D\u7F6E\u51B3\u5B9A\uFF09\uFF1B\u300C\u4E00\u952E\u6D4B\u8BD5\u300D\u5F39\u7A97\u4E2D\u6BCF\u4E00\u6B65\u4E5F\u4F1A\u6807\u6CE8\u672C\u6B65\u9AA4\u4F7F\u7528\u7684\u6280\u672F\u901A\u9053\u3002\u6240\u6709\u300C\u76F4\u8FDE\u63A5\u53E3\u300D\u5747\u4E3A\u9006\u5411\u7F51\u9875\u7AEF\u6570\u636E\u63A5\u53E3\uFF0C",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u975E\u5B98\u65B9\u5F00\u653E API" }),
+          "\u3002"
+        ] }),
+        tech?.error ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { style: { color: "#9a3412" }, children: [
+          "\u6280\u672F\u77E9\u9635\u52A0\u8F7D\u5931\u8D25\uFF1A",
+          tech.error
+        ] }) : !tech ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "muted", children: "\u52A0\u8F7D\u4E2D\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", open: true, style: { marginBottom: 12 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("summary", { children: [
+              "\u5168\u7AD9\u6280\u672F\u6808\uFF08",
+              tech.stack.length,
+              " \u9879\uFF0C\u70B9\u51FB\u6298\u53E0\uFF09"
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { style: { marginTop: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 200 }, children: "\u6280\u672F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BF4\u660E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 220 }, children: "\u5B9E\u73B0\u843D\u70B9" })
+              ] }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: tech.stack.map((t) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.desc }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { style: { fontSize: 11 }, children: t.impl }) })
+              ] }, t.key)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "table-wrap", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u5E73\u53F0" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u641C\u7D22\u901A\u9053" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BE6\u60C5\u901A\u9053" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u767B\u5F55\u8981\u6C42" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u54EA\u79CD\u6280\u672F\u6548\u679C\u6700\u597D" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: Object.entries(tech.matrix).map(([id, t]) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.search }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.detail }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "nowrap" }, children: t.needLogin === "\u5FC5\u9700" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { style: { color: "#9a3412" }, children: "\u5FC5\u9700" }) : t.needLogin }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.best })
+            ] }, id)) })
+          ] }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
+            "\u964D\u7EA7\u94FE\u8DEF\u7EDF\u4E00\u4E3A\uFF1A",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u76F4\u8FDE\u63A5\u53E3 \u2192 \u6D4F\u89C8\u5668\u6E32\u67D3\uFF08Patchright\uFF09\u2192 fetch \u76F4\u53D6\uFF08TLS \u4F2A\u88C5\uFF09" }),
+            "\uFF0C\u4EFB\u4E00\u5C42\u5931\u8D25\u81EA\u52A8\u6362\u4F1A\u8BDD/\u6307\u7EB9\u91CD\u8BD5\uFF1B\u8BE6\u60C5\u9875\u5728\u76F4\u8FDE\u5931\u8D25\u65F6\u7531\u6D4F\u89C8\u5668\u54CD\u5E94\u6355\u83B7 + \u5185\u5D4C JSON \u6DF1\u641C\u515C\u5E95\u3002"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--line, #e5e5e5)" }, id: "techDiagnose", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { style: { margin: "0 0 8px", fontSize: 14 }, children: "\u{1F9EA} \u5E73\u53F0\u901A\u9053\u8BCA\u65AD\uFF08\u9010\u6280\u672F\u72EC\u7ACB\u5B9E\u9A8C\uFF09" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "0 0 10px" }, children: [
+              "\u9009\u5E73\u53F0\u8F93\u5165\u67E5\u8BE2\u8BCD\uFF0C\u628A\u641C\u7D22\u94FE\u8DEF\u6309",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u76F4\u8FDE\u63A5\u53E3 / \u6D4F\u89C8\u5668\u6E32\u67D3+\u54CD\u5E94\u6355\u83B7 / fetch \u76F4\u53D6" }),
+              "\u4E09\u4E2A\u901A\u9053",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u5404\u81EA\u72EC\u7ACB" }),
+              "\u8BD5\u8DD1\uFF08\u4E92\u4E0D\u56DE\u9000\u3001\u4E0D\u843D\u5E93\u3001\u4E0D\u91C7\u8BE6\u60C5\uFF09\uFF0C\u6A2A\u5411\u5BF9\u6BD4\u54EA\u79CD\u6280\u672F\u5BF9\u8BE5\u5E73\u53F0\u6709\u6548\u3002\u771F\u5B9E\u7F51\u7EDC\u8BF7\u6C42\uFF0C\u6D4F\u89C8\u5668\u901A\u9053\u53EF\u80FD\u9700\u8981 30~90 \u79D2\u3002"
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                "select",
+                {
+                  value: diagPlat,
+                  onChange: (e) => setDiagPlat(e.target.value),
+                  disabled: diagRunning,
+                  children: Object.entries(tech.matrix).map(([id, t]) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("option", { value: id, children: [
+                    t.name,
+                    "\uFF08",
+                    id,
+                    "\uFF09"
+                  ] }, id))
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                "input",
+                {
+                  value: diagQuery,
+                  onChange: (e) => setDiagQuery(e.target.value),
+                  placeholder: "\u67E5\u8BE2\u8BCD\uFF0C\u5982\uFF1A\u624B\u673A",
+                  disabled: diagRunning,
+                  style: { width: 170 }
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { disabled: diagRunning, onClick: runTechDiag, children: diagRunning ? "\u8BCA\u65AD\u4E2D\u2026\uFF08\u6700\u957F\u7EA6 90 \u79D2\uFF09" : "\u{1F9EA} \u8FD0\u884C\u901A\u9053\u8BCA\u65AD" })
+            ] }),
+            diagError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { color: "#9a3412" }, children: diagError }) : null,
+            diagResult ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "table-wrap", style: { marginTop: 10 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 230 }, children: "\u6280\u672F\u901A\u9053" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u7ED3\u679C" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u6570\u636E\u91CF" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8017\u65F6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u89E3\u6790\u6765\u6E90" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u6837\u4F8B" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u5931\u8D25\u539F\u56E0" })
+                ] }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: diagResult.channels.map((c) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: c.name }),
+                    diagResult.best === c.key ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "badge ok", style: { marginLeft: 6 }, children: "\u2B50 \u63A8\u8350" }) : null
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "nowrap" }, children: c.ok ? "\u2705 \u6210\u529F" : "\u274C \u5931\u8D25" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: c.count }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("td", { style: { whiteSpace: "nowrap" }, children: [
+                    (c.ms / 1e3).toFixed(1),
+                    "s"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: c.via || "\u2014" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12, maxWidth: 200 }, children: c.sample || "\u2014" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12, color: "#9a3412" }, children: c.error || "" })
+                ] }, c.key)) })
+              ] }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "8px 0 0" }, children: [
+                "\u{1F3AF} \u7ED3\u8BBA\uFF1A",
+                diagResult.best ? `\u672C\u6B21\u5B9E\u9A8C\u4E2D\u300C${diagResult.channels.find((c) => c.key === diagResult.best)?.name}\u300D\u5BF9 ${diagResult.name}\uFF08\u67E5\u8BE2\u8BCD\u300C${diagResult.query}\u300D\uFF09\u6548\u679C\u6700\u597D\uFF0C\u53EF\u5BF9\u7167\u4E0A\u8868\u9009\u62E9\u5B9E\u9A8C\u65B9\u5411` : `\u672C\u6B21\u6240\u6709\u901A\u9053\u5747\u672A\u62FF\u5230\u6570\u636E\u2014\u2014\u591A\u534A\u662F\u767B\u5F55\u6001\u7F3A\u5931\u6216\u88AB\u98CE\u63A7\uFF0C\u5148\u5230\u300C\u5E73\u53F0\u767B\u5F55\u72B6\u6001\u300D\u9762\u677F\u63D0\u53D6\u767B\u5F55\u6001\u540E\u518D\u5B9E\u9A8C`
+              ] })
+            ] }) : null
+          ] })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(

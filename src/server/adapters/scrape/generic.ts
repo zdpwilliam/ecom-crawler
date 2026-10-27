@@ -1086,6 +1086,105 @@ export class GenericScrapeAdapter extends BaseAdapter {
     }
   }
 
+  // 通道诊断：把搜索链路按技术通道拆开「各自独立」跑一遍（直连接口 / 浏览器渲染+响应捕获 /
+  // fetch 直取 SSR 解析），通道间不回退、不落库、不采详情，产出可横向对比的结果，
+  // 供「数据抓取技术」面板的「平台通道诊断」选择实验哪种技术更好。
+  async diagnoseChannels(query: string, opts: Record<string, any> = {}) {
+    await this.guard();
+    const cfg = SCRAPE_CONFIG[this.id] || SCRAPE_CONFIG._generic;
+    const limit = opts.limit || 5;
+    const channels: any[] = [];
+    const source = cfg.searchUrl ? cfg.searchUrl(query) : query;
+
+    // ① 直连接口通道（配置了 directApi 的平台才有）
+    if (cfg.directApi) {
+      const started = Date.now();
+      try {
+        await netThrottle(runLog);
+        const rows = await cfg.directApi({ query, limit, log: runLog });
+        channels.push({
+          key: 'direct',
+          name: '直连接口（逆向网页端 XHR）',
+          ok: rows.length > 0,
+          count: rows.length,
+          ms: Date.now() - started,
+          sample: rows[0]?.title || '',
+          error: rows.length ? '' : '接口返回 0 条（登录态缺失或被风控拦截）',
+        });
+      } catch (e: any) {
+        channels.push({ key: 'direct', name: '直连接口（逆向网页端 XHR）', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
+      }
+    }
+
+    // ② 浏览器渲染（Patchright）+ 响应捕获 + DOM/内嵌 JSON 解析
+    {
+      const started = Date.now();
+      try {
+        const { html, page, browser, tfsBlocked, apiBodies } = await load(source, this.id);
+        try {
+          let products = [];
+          const via: string[] = [];
+          if (page) {
+            const raw = await inBrowserExtract(page).catch(() => []);
+            products = normalizeProducts(raw, cfg);
+            if (products.length) via.push('DOM 启发式抽取');
+          }
+          if (!products.length) {
+            products = parseProducts(html, cfg);
+            if (products.length) via.push('静态 HTML/内嵌 JSON 解析');
+          }
+          const apiRaw = apiProductsFromBodies(apiBodies || []);
+          if (apiRaw.length) {
+            via.push(`响应捕获(${apiRaw.length} 条)`);
+            if (apiRaw.length >= products.length) products = mapApiProducts(apiRaw, cfg, this.id);
+          }
+          channels.push({
+            key: 'browser',
+            name: '浏览器渲染（Patchright）+ 响应捕获',
+            ok: products.length > 0,
+            count: products.length,
+            ms: Date.now() - started,
+            via: via.join(' + '),
+            sample: products[0]?.title || '',
+            error: products.length ? '' : tfsBlocked ? 'Forbidden by TFS（风控壳页，需登录态）' : `页面 ${(html.length / 1024).toFixed(0)}KB 未解析到商品`,
+          });
+        } finally {
+          await closePage(browser);
+        }
+      } catch (e: any) {
+        channels.push({ key: 'browser', name: '浏览器渲染（Patchright）+ 响应捕获', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
+      }
+    }
+
+    // ③ fetch 直取通道（TLS 伪装 + SSR/静态 HTML 解析，无浏览器）
+    {
+      const started = Date.now();
+      try {
+        await netThrottle(runLog);
+        const profile = resolveProfile(this.id);
+        const r = await loadFetch(source, profile);
+        reportSessionOk(profile.sid);
+        const products = parseProducts(r.html, cfg);
+        channels.push({
+          key: 'fetch',
+          name: 'fetch 直取（impit TLS 伪装 + SSR 解析）',
+          ok: products.length > 0,
+          count: products.length,
+          ms: Date.now() - started,
+          via: products.length ? '静态 HTML/内嵌 JSON 解析' : '',
+          sample: products[0]?.title || '',
+          error: products.length ? '' : `HTML ${(r.html.length / 1024).toFixed(0)}KB 无商品数据（JS 渲染站点此通道天然不可行）`,
+        });
+      } catch (e: any) {
+        channels.push({ key: 'fetch', name: 'fetch 直取（impit TLS 伪装 + SSR 解析）', ok: false, count: 0, ms: Date.now() - started, error: String(e.message).slice(0, 220) });
+      }
+    }
+
+    // 结论：成功的通道里数据量多者优先，同量级耗时短者优先
+    const best = channels.filter((c) => c.ok).sort((a, b) => b.count - a.count || a.ms - b.ms)[0]?.key || '';
+    return { platform: this.id, name: cfg.name, query, channels, best };
+  }
+
   // 采集单个商品详情页：评论 + 公开问答 + SPU/SKU 规格信息
   async collectDetail(url: string, opts: Record<string, any> = {}) {
     await this.guard();

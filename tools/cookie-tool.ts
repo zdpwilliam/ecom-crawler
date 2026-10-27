@@ -63,8 +63,14 @@ function waitForEnter() {
 export const LOGIN_MARKERS = {
   vip: (cookies) => {
     const u = cookies.find((c) => c.name === 'VipUINFO');
-    // 未登录时 VipUINFO 固定为 luc:a|suc:a，登录后包含账号名
-    return !!u && !/^luc%3Aa%7Csuc%3Aa/.test(u.value || '');
+    if (!u) return false;
+    // 未登录形态：luc:a|suc:a（URL 编码 luc%3Aa%7Csuc%3Aa）。
+    // 2026-10-27 实测：持久化档案里的脏游客 Cookie 还有 luc:b|suc:b|… 变体，旧判定只排除了
+    // a 变体 → 弹窗 3 秒即误判「已登录」并自动关闭浏览器。此处只排除实测到的两种游客首段
+    // （字母 a/b），其余形态交给 LOGIN_CONFIRM.vip 页面级二次确认兜底（脏档案下 Cookie 判定不可靠）。
+    const v = decodeURIComponent(u.value || '');
+    const head = v.split('|').slice(0, 2).join('|');
+    return !/^luc:[ab]\|suc:[ab]$/.test(head);
   },
   // 2026-10-26 扩展四平台：以「会话 Cookie 存在且非空」为登录信号（保守判定，宁可漏报不误报）
   xiaohongshu: (cookies) => {
@@ -91,6 +97,14 @@ export const LOGIN_MARKERS = {
 // 仅靠 cookie 会「弹窗即关」。游客态右上角有 .login-btn 登录按钮，登录后消失 → 以此做确认。
 export const LOGIN_CONFIRM = {
   xiaohongshu: async (page) => page.evaluate(() => !document.querySelector('.login-btn')),
+  // 唯品会：游客态头部有「请登录」入口，登录后展示昵称/会员信息。
+  // Cookie 判定对脏档案（旧会话 Cookie 残留）不可靠，必须页面级确认。
+  vip: async (page) =>
+    page.evaluate(() => {
+      const head = document.querySelector('#J_header, .header, header, .topbar') || document.body;
+      const t = String(head.innerText || document.body.innerText || '').slice(0, 2500);
+      return !/请登录/.test(t);
+    }),
 };
 
 // 登录自动关闭决策：cookie 命中 + 页面确认。pageConfirmed=null 表示平台无确认项（保持旧行为）。

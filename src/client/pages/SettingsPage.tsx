@@ -370,6 +370,30 @@ export function SettingsPage() {
       .catch((e: any) => setTech({ error: e.message }));
   }, []);
 
+  // 平台通道诊断：按技术通道独立试跑搜索链路，横向对比哪种技术对该平台有效
+  const [diagPlat, setDiagPlat] = useState('vip');
+  const [diagQuery, setDiagQuery] = useState('手机');
+  const [diagRunning, setDiagRunning] = useState(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
+  const [diagError, setDiagError] = useState('');
+  async function runTechDiag() {
+    setDiagRunning(true);
+    setDiagError('');
+    setDiagResult(null);
+    try {
+      const r = await apiJson('/api/tech-diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: diagPlat, query: diagQuery }),
+      });
+      setDiagResult(r);
+    } catch (e: any) {
+      setDiagError('诊断失败：' + e.message);
+    } finally {
+      setDiagRunning(false);
+    }
+  }
+
   // ---------- 采集参数 ----------
   const [settings, setSettings] = useState<any>({});
   const [settingsResult, setSettingsResult] = useState('');
@@ -1064,78 +1088,6 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* ═══ 面板 2.5 · 数据抓取技术 ═══ */}
-      <section className="panel">
-        <h2>数据抓取技术</h2>
-        <p className="hint" style={{ margin: '0 0 10px' }}>
-          本系统实际使用的抓取技术与各平台当前通道。<b>通道配置与代码实现一一对应</b>（搜索/详情直连与否由各平台适配器配置决定）；「一键测试」弹窗中每一步也会标注本步骤使用的技术通道。所有「直连接口」均为逆向网页端数据接口，<b>非官方开放 API</b>。
-        </p>
-        {tech?.error ? (
-          <p style={{ color: '#9a3412' }}>技术矩阵加载失败：{tech.error}</p>
-        ) : !tech ? (
-          <p className="muted">加载中…</p>
-        ) : (
-          <>
-            {/* 全站技术栈 */}
-            <details className="diag" open style={{ marginBottom: 12 }}>
-              <summary>全站技术栈（{tech.stack.length} 项，点击折叠）</summary>
-              <table style={{ marginTop: 8 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 200 }}>技术</th>
-                    <th>说明</th>
-                    <th style={{ width: 220 }}>实现落点</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tech.stack.map((t: any) => (
-                    <tr key={t.key}>
-                      <td>
-                        <b>{t.name}</b>
-                      </td>
-                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.desc}</td>
-                      <td>
-                        <code style={{ fontSize: 11 }}>{t.impl}</code>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-            {/* 各平台通道矩阵 */}
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>平台</th>
-                    <th>搜索通道</th>
-                    <th>详情通道</th>
-                    <th>登录要求</th>
-                    <th>哪种技术效果最好</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(tech.matrix).map(([id, t]: [string, any]) => (
-                    <tr key={id}>
-                      <td>
-                        <b>{t.name}</b>
-                      </td>
-                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.search}</td>
-                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.detail}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>{t.needLogin === '必需' ? <b style={{ color: '#9a3412' }}>必需</b> : t.needLogin}</td>
-                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.best}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="hint">
-              降级链路统一为：<b>直连接口 → 浏览器渲染（Patchright）→ fetch 直取（TLS 伪装）</b>，任一层失败自动换会话/指纹重试；详情页在直连失败时由浏览器响应捕获 + 内嵌 JSON 深搜兜底。
-            </p>
-          </>
-        )}
-      </section>
-
       {/* ═══ 面板 3 · 代理池 ═══ */}
       <section className="panel">
         <h2>代理池</h2>
@@ -1260,6 +1212,155 @@ export function SettingsPage() {
         <p className="hint">
           切换需在确认弹窗中<b>校验目标库连通性</b>，确认后自动<b>迁移全部采集数据与定时任务</b>到目标库（迁移期间展示进度条，完成后弹窗提醒）。迁移为非破坏式：源库数据原样保留，可随时切回；任务运行记录随各自后端保留。数据清理入口在「数据管理」页（🗑 清理数据，弹框确认）。
         </p>
+      </section>
+
+      {/* ═══ 面板 5 · 数据抓取技术（页面最下方） ═══ */}
+      <section className="panel">
+        <h2>数据抓取技术</h2>
+        <p className="hint" style={{ margin: '0 0 10px' }}>
+          本系统实际使用的抓取技术与各平台当前通道。<b>通道配置与代码实现一一对应</b>（搜索/详情直连与否由各平台适配器配置决定）；「一键测试」弹窗中每一步也会标注本步骤使用的技术通道。所有「直连接口」均为逆向网页端数据接口，<b>非官方开放 API</b>。
+        </p>
+        {tech?.error ? (
+          <p style={{ color: '#9a3412' }}>技术矩阵加载失败：{tech.error}</p>
+        ) : !tech ? (
+          <p className="muted">加载中…</p>
+        ) : (
+          <>
+            {/* 全站技术栈 */}
+            <details className="diag" open style={{ marginBottom: 12 }}>
+              <summary>全站技术栈（{tech.stack.length} 项，点击折叠）</summary>
+              <table style={{ marginTop: 8 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 200 }}>技术</th>
+                    <th>说明</th>
+                    <th style={{ width: 220 }}>实现落点</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tech.stack.map((t: any) => (
+                    <tr key={t.key}>
+                      <td>
+                        <b>{t.name}</b>
+                      </td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.desc}</td>
+                      <td>
+                        <code style={{ fontSize: 11 }}>{t.impl}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+            {/* 各平台通道矩阵 */}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>平台</th>
+                    <th>搜索通道</th>
+                    <th>详情通道</th>
+                    <th>登录要求</th>
+                    <th>哪种技术效果最好</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(tech.matrix).map(([id, t]: [string, any]) => (
+                    <tr key={id}>
+                      <td>
+                        <b>{t.name}</b>
+                      </td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.search}</td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.detail}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{t.needLogin === '必需' ? <b style={{ color: '#9a3412' }}>必需</b> : t.needLogin}</td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.best}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint">
+              降级链路统一为：<b>直连接口 → 浏览器渲染（Patchright）→ fetch 直取（TLS 伪装）</b>，任一层失败自动换会话/指纹重试；详情页在直连失败时由浏览器响应捕获 + 内嵌 JSON 深搜兜底。
+            </p>
+
+            {/* 平台通道诊断：各技术通道独立试跑，横向对比实验哪种技术更好 */}
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--line, #e5e5e5)' }} id="techDiagnose">
+              <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>🧪 平台通道诊断（逐技术独立实验）</h3>
+              <p className="hint" style={{ margin: '0 0 10px' }}>
+                选平台输入查询词，把搜索链路按<b>直连接口 / 浏览器渲染+响应捕获 / fetch 直取</b>三个通道<b>各自独立</b>试跑（互不回退、不落库、不采详情），横向对比哪种技术对该平台有效。真实网络请求，浏览器通道可能需要 30~90 秒。
+              </p>
+              <div className="controls">
+                <select
+                  value={diagPlat}
+                  onChange={(e) => setDiagPlat(e.target.value)}
+                  disabled={diagRunning}
+                >
+                  {Object.entries(tech.matrix).map(([id, t]: [string, any]) => (
+                    <option key={id} value={id}>
+                      {t.name}（{id}）
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={diagQuery}
+                  onChange={(e) => setDiagQuery(e.target.value)}
+                  placeholder="查询词，如：手机"
+                  disabled={diagRunning}
+                  style={{ width: 170 }}
+                />
+                <button disabled={diagRunning} onClick={runTechDiag}>
+                  {diagRunning ? '诊断中…（最长约 90 秒）' : '🧪 运行通道诊断'}
+                </button>
+              </div>
+              {diagError ? <p style={{ color: '#9a3412' }}>{diagError}</p> : null}
+              {diagResult ? (
+                <>
+                  <div className="table-wrap" style={{ marginTop: 10 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 230 }}>技术通道</th>
+                          <th>结果</th>
+                          <th>数据量</th>
+                          <th>耗时</th>
+                          <th>解析来源</th>
+                          <th>样例</th>
+                          <th>失败原因</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {diagResult.channels.map((c: any) => (
+                          <tr key={c.key}>
+                            <td style={{ whiteSpace: 'normal', fontSize: 12 }}>
+                              <b>{c.name}</b>
+                              {diagResult.best === c.key ? (
+                                <span className="badge ok" style={{ marginLeft: 6 }}>
+                                  ⭐ 推荐
+                                </span>
+                              ) : null}
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{c.ok ? '✅ 成功' : '❌ 失败'}</td>
+                            <td>{c.count}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{(c.ms / 1000).toFixed(1)}s</td>
+                            <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{c.via || '—'}</td>
+                            <td style={{ whiteSpace: 'normal', fontSize: 12, maxWidth: 200 }}>{c.sample || '—'}</td>
+                            <td style={{ whiteSpace: 'normal', fontSize: 12, color: '#9a3412' }}>{c.error || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="hint" style={{ margin: '8px 0 0' }}>
+                    🎯 结论：
+                    {diagResult.best
+                      ? `本次实验中「${diagResult.channels.find((c: any) => c.key === diagResult.best)?.name}」对 ${diagResult.name}（查询词「${diagResult.query}」）效果最好，可对照上表选择实验方向`
+                      : `本次所有通道均未拿到数据——多半是登录态缺失或被风控，先到「平台登录状态」面板提取登录态后再实验`}
+                  </p>
+                </>
+              ) : null}
+            </div>
+          </>
+        )}
       </section>
 
       {/* 登录态 Cookie 内容查看弹窗 */}
