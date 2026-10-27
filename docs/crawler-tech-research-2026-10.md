@@ -91,6 +91,11 @@
 
 ## 四、对照差距与改进路线（按性价比排序）
 
+> **实施状态（2026-10-27 更新）**：P0 全部 3 项与 P1 全部 3 项已完成落地——
+> P0-1 会话池 `src/server/session-pool.ts`（三元绑定 + 登录态粘性）、P0-2 `src/server/http-client.ts`（impit TLS 伪装，全直连通道 + 探针接入）、P0-3 `classifyBan()` 语义化（session-expired/ip-banned/challenge/soft-block 四类处置）；
+> P1-4 `src/server/fp-inject.ts` 渲染层指纹注入 + Patchright 自动探测（`npm i patchright` 即启用）、P1-5 `src/server/adapters/scrape/adaptive.ts` 快照重定位（含 noProductHint 平台跳过与误定位护栏）、P1-6 指纹池统计加权采样（FAMILY_WEIGHTS）。
+> 测试：`tests/test-session-pool.mjs` 单元 17 项 + 全量冒烟 15 套通过。
+
 ### P0（高收益低成本，建议尽快做）
 
 1. **会话↔代理↔指纹三元绑定**：当前代理轮换与 Cookie 快照、指纹抽档是独立的三件事。改为"同一会话固定同一代理+同一指纹"，登录态通道强制粘性。这是行业共识里"明明工具很强还是被封"的最大错配源。改动集中在 `fingerprint.ts` / `proxy-pool.ts` / 采集调度，量级约 1~2 天

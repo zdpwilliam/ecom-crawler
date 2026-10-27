@@ -5,18 +5,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetch as undiciFetch } from 'undici';
-import { socksDispatcher } from 'fetch-socks';
-import { pickProxy, getProxyDispatcher } from '../../proxy-pool.ts';
 import { apiProductsFromBodies, mapApiProducts } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
 import { COOKIES_DIR } from '../../paths.ts';
-
-
+import { acquireSession, classifyBan, markBadSession, reportSessionOk, retireSession } from '../../session-pool.ts';
+import { impersonatedFetch } from '../../http-client.ts';
 
 // 唯品会 PC 前端固定公共 api_key（页面 JS 内置，非私密凭证）
 const API_KEY = '70f71280d5d547b2a7bb370a529aeea1';
+const UA_FALLBACK = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const RANK_URL = 'https://mapi-pc.vip.com/vips-mobile/rest/shopping/pc/search/product/rank';
 const LIST_URL = 'https://mapi-pc.vip.com/vips-mobile/rest/shopping/pc/product/module/list/v2';
 const DETAIL_URL = 'https://mapi-pc.vip.com/vips-mobile/rest/shopping/pc/detail/main/v6';
@@ -33,19 +31,22 @@ function loadLoginCookies() {
 
 const unwrapJsonp = (t) => JSON.parse(t.slice(t.indexOf('(') + 1, t.lastIndexOf(')')));
 
-async function jget(url, headers, dispatcher, tries = 3, log = (_m?: string) => {}) {
+async function jget(url, headers, proxy, sid, tries = 3, log = (_m?: string) => {}) {
   let lastErr;
   for (let i = 1; i <= tries; i++) {
     // 全局节流：与浏览器通道/其它直连请求共用计时，保证任意两次真实请求至少隔一个档位
     await netThrottle(log);
     // 最后一次尝试绕过代理直连（唯品会国内站，代理挂了仍可采）
-    const d = dispatcher && i === tries ? undefined : dispatcher;
+    const p = proxy && i === tries ? undefined : proxy;
     try {
-      const res = await undiciFetch(url, { headers, dispatcher: d });
+      // TLS 伪装通道：impit 对齐真 Chrome 握手，SOCKS/不可用时自动降级 undici
+      const res = await impersonatedFetch({ url, headers, proxy: p, timeout: 15000 });
+      reportSessionOk(sid);
       return await res.text();
     } catch (e) {
       lastErr = String(e.cause?.code || e.cause?.message || e.message).slice(0, 80);
-      log(`  接口尝试${i}失败: ${lastErr}${d === undefined && dispatcher ? '（已绕过代理直连）' : ''}`);
+      markBadSession(sid, 'transient');
+      log(`  接口尝试${i}失败: ${lastErr}${p === undefined && proxy ? '（已绕过代理直连）' : ''}`);
       // 重试间隔由下一次循环开头的 netThrottle 按设置档位保证
     }
   }
@@ -64,15 +65,16 @@ export async function fetchVipProducts({ query, limit = 30, log = (_m?: string) 
   const val = (n) => (cookies.find((c) => c.name === n) || {}).value || '';
   const userId = val('VipRUID') || val('user_id');
   const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  // 会话三元绑定：登录态通道粘性——Cookie+代理+UA（指纹）来自同一虚拟用户
+  const sess = acquireSession('vip', true);
   const headers = {
     Cookie: cookieHeader,
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': sess.userAgent || UA_FALLBACK,
     Referer: 'https://category.vip.com/',
     Accept: '*/*',
   };
-  const proxy = pickProxy();
-  const dispatcher = proxy ? await getProxyDispatcher(proxy) : undefined;
-  log(`直连接口通道：${proxy ? '代理 ' + proxy : '直连'}（登录态 ${cookies.length} 条）`);
+  const proxy = sess.proxy;
+  log(`直连接口通道：粘性会话#${sess.sid} ${proxy ? '代理 ' + proxy : '直连'}（登录态 ${cookies.length} 条，UA=${(headers['User-Agent']).slice(0, 36)}…）`);
 
   const common = {
     callback: 'cb',
@@ -92,9 +94,11 @@ export async function fetchVipProducts({ query, limit = 30, log = (_m?: string) 
 
   // 1) rank：拿商品 pid 列表
   const q1 = new URLSearchParams({ ...common, keyword: query, page_offset: '0', sort: '0', pageCount: String(Math.max(limit, 20)) });
-  const t1 = await jget(`${RANK_URL}?${q1}`, headers, dispatcher, 3, log);
+  const t1 = await jget(`${RANK_URL}?${q1}`, headers, proxy, sess.sid, 3, log);
   const r1 = unwrapJsonp(t1);
   if (r1.code !== 1 || !Array.isArray(r1.data?.products) || !r1.data.products.length) {
+    const ban = classifyBan({ body: `${r1.code || ''} ${r1.msg || ''} ${JSON.stringify(r1.data || {}).slice(0, 800)}` });
+    if (ban.hint) log(`rank 封禁语义判定[${ban.kind}]：${ban.hint}`);
     throw new Error(`rank 接口无数据：code=${r1.code} msg=${r1.msg || ''}`);
   }
   const total = r1.data.total || r1.data.products.length;
@@ -110,9 +114,11 @@ export async function fetchVipProducts({ query, limit = 30, log = (_m?: string) 
     if (isStopped()) throw new Error('已手动停止采集');
     if (chunks.length > 1) log(`list 接口第 ${ci + 1}/${chunks.length} 批（${chunk.length} 个 pid，接口单批上限 50）`);
     const q2 = new URLSearchParams({ ...common, productIds: chunk.join(','), scene: 'search', priceShowType: '1' });
-    const t2 = await jget(`${LIST_URL}?${q2}`, headers, dispatcher, 3, log);
+    const t2 = await jget(`${LIST_URL}?${q2}`, headers, proxy, sess.sid, 3, log);
     const r2 = unwrapJsonp(t2);
     if (r2.code !== 1) {
+      const ban = classifyBan({ body: `${r2.code || ''} ${r2.msg || ''} ${JSON.stringify(r2.data || {}).slice(0, 800)}` });
+      if (ban.hint) log(`list 封禁语义判定[${ban.kind}]：${ban.hint}`);
       throw new Error(`list 接口拒绝：code=${r2.code} msg=${r2.msg || ''}`);
     }
     bodies.push({ body: t2 });
@@ -246,16 +252,16 @@ export async function fetchVipDetailSpuSku({ itemId, log = (_m?: string) => {} }
   }
   const val = (n) => (cookies.find((c) => c.name === n) || {}).value || '';
   const userId = val('VipRUID') || val('user_id');
+  const sess = acquireSession('vip', true); // 与搜索同会话：详情接口延续搜索的粘性身份
   const headers = {
     Cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; '),
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': sess.userAgent || UA_FALLBACK,
     Referer: 'https://detail.vip.com/',
     'Content-Type': 'application/x-www-form-urlencoded',
     Accept: '*/*',
   };
-  const proxy = pickProxy();
-  const dispatcher = proxy ? await getProxyDispatcher(proxy) : undefined;
-  log(`详情直连接口通道：${proxy ? '代理 ' + proxy : '直连'}（登录态 ${cookies.length} 条）`);
+  const proxy = sess.proxy;
+  log(`详情直连接口通道：粘性会话#${sess.sid} ${proxy ? '代理 ' + proxy : '直连'}（登录态 ${cookies.length} 条）`);
   const form = new URLSearchParams({
     app_name: 'shop_pc',
     app_version: '4.0',
@@ -277,18 +283,20 @@ export async function fetchVipDetailSpuSku({ itemId, log = (_m?: string) => {} }
   for (let i = 1; i <= 3; i++) {
     await netThrottle(log); // 全局节流：跨通道共用计时
     try {
-      // 最后一次尝试绕过代理直连（唯品会国内站，代理挂了仍可采）
-      const d = dispatcher && i === 3 ? undefined : dispatcher;
-      const res = await undiciFetch(DETAIL_URL, { method: 'POST', headers, body: String(form), dispatcher: d });
+      // 最后一次尝试绕过代理直连（唯品会国内站，代理挂了仍可采）；TLS 伪装自动降级
+      const p = proxy && i === 3 ? undefined : proxy;
+      const res = await impersonatedFetch({ url: DETAIL_URL, method: 'POST', headers, body: String(form), proxy: p });
       const text = await res.text();
       const j = JSON.parse(text);
       if (j.code !== 1) throw new Error(`detail 接口拒绝：code=${j.code} msg=${j.msg || ''}`);
       const r = extractVipDetailSpuSku([{ url: DETAIL_URL, body: text }]);
       if (!r.spu && !r.skus.length) throw new Error('detail 接口返回但未解析到 SPU/SKU');
+      reportSessionOk(sess.sid);
       log(`详情接口成功：SPU ${r.spu ? '✓' : '✗'}，SKU ${r.skus.length} 个，规格维度 ${(r.propGroups || []).length} 组`);
       return r;
     } catch (e) {
       lastErr = e;
+      markBadSession(sess.sid, 'transient');
       log(`  详情接口尝试${i}失败: ${String(e.message).slice(0, 80)}`);
       // 重试间隔由下一次循环开头的 netThrottle 按设置档位保证
     }

@@ -9,13 +9,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DATA_TYPES } from '../../types.ts';
 import { SCRAPE_CONFIG, demo, pickUA, randomDelayMs, sleep, NETWORK, netThrottle } from './config.ts';
-import { pickProxy, reportFailure, reportSuccess, getProxyDispatcher, fetchErrText } from '../../proxy-pool.ts';
-import { buildRequestProfile, randomFingerprint, fingerprintEnabled } from '../../fingerprint.ts';
+import { fetchErrText } from '../../proxy-pool.ts';
+import { randomFingerprint, fingerprintEnabled } from '../../fingerprint.ts';
+import { acquireSession, reportSessionOk, markBadSession, classifyBan, applyBanToSession } from '../../session-pool.ts';
+import { impersonatedFetch } from '../../http-client.ts';
+import { fingerprintInitScript } from '../../fp-inject.ts';
 import { runLog } from '../../runlog.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { apiProductsFromBodies, mapApiProducts, spuSkuFromBodies } from './api-parse.ts';
-// 代理请求统一用 npm undici 的 fetch（内置 fetch 与 npm undici v7 dispatcher 不兼容）
-import { fetch as undiciFetch } from 'undici';
+import { recordSnapshot, locateBySnapshot, updateSnapshot } from './adaptive.ts';
+// HTTP 请求统一走 http-client.ts（impit TLS 伪装 + undici 兜底），此处不再直接引 undici
 import { DATA_DIR } from '../../paths.ts';
 
 
@@ -206,9 +209,69 @@ function parseProducts(html, cfg) {
       };
     })
     .filter(Boolean);
-  if (fromSelector.length) return fromSelector;
+  if (fromSelector.length) {
+    // 成功采集：记录结构快照（P1-5 自适应解析——站点改版后可按快照重定位）
+    recordSnapshot(cfg.name, 'product', html, cfg.product.cardOpen);
+    return fromSelector;
+  }
   const ld = extractJsonLd(html).filter((n) => n['@type'] === 'Product');
+  if (ld.length) return parseProductsJsonLd(ld, cfg);
+  // 自适应重定位（P1-5）：配置选择器与 JSON-LD 都失配 → 按快照相似度找新卡片结构。
+  // noProductHint 平台（得物等已知无可用网页商城）跳过——这类站点页面上的重复容器
+  // 是轮播/推荐位而非商品卡，重定位只会产出垃圾数据（round38 实测教训）。
+  if (!cfg.noProductHint) {
+    const relocated = adaptiveParseProducts(html, cfg);
+    if (relocated.length) return relocated;
+  }
   return parseProductsJsonLd(ld, cfg);
+}
+
+/** 自适应重定位解析（P1-5）：宽松字段抽取（标题=块内最长文本，链接走 urlAccept 护栏）。 */
+function adaptiveParseProducts(html, cfg) {
+  const located = locateBySnapshot(cfg.name, 'product', html);
+  if (!located) return [];
+  runLog(
+    `⚠ 自适应重定位生效：配置选择器失配，按结构快照定位到 <${located.tag} class="${located.cls.slice(0, 40)}"> ` +
+      `× ${located.blocks.length} 块（结构相似度得分 ${located.similarity.toFixed(2)}）——请校对解析结果并更新 SCRAPE_CONFIG`
+  );
+  const out = [];
+  for (const [i, b] of located.blocks.entries()) {
+    // 宽松抽取：标题=块内最长可见文本；价格=首个价格样式数字；链接=第一个商品护栏内的 <a href>
+    const texts = stripTags(b).split(' ').filter((w) => w.length > 4);
+    const title = texts.sort((a, b2) => b2.length - a.length)[0] || '';
+    // 内容护栏：标题长得像 JSON/代码 = 这是数据块不是商品卡（得物误定位教训），整簇作废
+    if (!title || /^[{[<]/.test(title) || /function|=>|dataManager/.test(title)) return [];
+    if (!title) continue;
+    const hrefs = [...b.matchAll(/<a\b[^>]*href=["']([^"']+)["']/gi)].map((mm) => decode(mm[1]));
+    const url = cfg.product.urlAccept ? hrefs.find((u) => cfg.product.urlAccept.test(u)) || '' : hrefs[0] || '';
+    if (!url) continue;
+    const priceM = b.match(/[¥￥]\s*([\d,]+(?:\.\d+)?)|([\d,]{2,}(?:\.\d+)?)\s*元/);
+    const price = priceM ? parseFloat((priceM[1] || priceM[2]).replace(/,/g, '')) || 0 : 0;
+    const itemId =
+      (cfg.product.itemIdPattern ? (url.match(cfg.product.itemIdPattern) || [])[1] : '') ||
+      (url.match(/(\d{6,})/) || [])[1] ||
+      `item_${i}`;
+    out.push({
+      id: `scrape-${cfg.name}-adp-${itemId}-${i}`,
+      platform: cfg.name,
+      itemId,
+      shopName: '',
+      title,
+      price,
+      currency: 'CNY',
+      category: '',
+      brand: '',
+      sales: 0,
+      stock: 0,
+      url,
+      images: [],
+      specs: {},
+      collectedAt: new Date().toISOString(),
+      adaptive: true,
+    });
+  }
+  if (out.length) updateSnapshot(cfg.name, 'product', located.tag, located.cls);
+  return out;
 }
 
 function parseReviews(html, cfg) {
@@ -287,6 +350,20 @@ async function getPlaywright() {
     _pw = null;
   }
   return _pw;
+}
+
+// Patchright（P1-4 可选升级）：Playwright 的反检测补丁版，API 完全兼容、零改动替换。
+// 已安装即优先使用（去掉 Runtime.enable CDP 调用与 HeadlessChrome UA 痕迹）；未安装回退官方 Playwright。
+let _patchright: any | undefined = undefined;
+async function getPatchright() {
+  if (_patchright !== undefined) return _patchright;
+  try {
+    _patchright = await import('patchright');
+    runLog('渲染引擎：Patchright（反检测补丁版 Playwright）');
+  } catch {
+    _patchright = null;
+  }
+  return _patchright;
 }
 
 // dispatcher 统一由 proxy-pool.getProxyDispatcher 提供（http→ProxyAgent，socks4/5→fetch-socks）
@@ -570,18 +647,19 @@ function extraHeaders(profile) {
 // 全局节流统一走 config.js 的 netThrottle（跨模块单例）：直连接口与浏览器请求共用一个计时，
 // 保证「直连失败回退浏览器」这类跨通道切换也隔一个随机档位。
 
-// 按平台解析请求档案：mobileOnly 平台（得物/闲鱼等 App 为主站点）强制使用移动端设备档案，
+// 按平台解析请求档案：会话池粘性绑定（Cookie+代理+指纹三元一体，同一平台整个运行期同一会话）。
+// mobileOnly 平台（得物/闲鱼等 App 为主站点）强制使用移动端设备档案，
 // 不受全局「端型范围」设置影响——这类站点对桌面画像直接弹下载墙/拦截。
 // 指纹随机化关闭或移动子池为空时原样返回（降级为普通档案）。
 export function resolveProfile(platformId) {
-  const profile = buildRequestProfile();
+  const profile = acquireSession(platformId, true);
   const cfg = SCRAPE_CONFIG[platformId];
   if (cfg?.mobileOnly && fingerprintEnabled() && !profile.mobile) {
     // randomFingerprint('mobile') 返回请求档案口径的字段（userAgent/acceptLanguage/viewport…），
     // 不能直接 Object.assign 池条目（字段名是 ua/langs，会漏换 UA——曾因此 desktop UA 顶着 mobile:true 出网）
     const f = randomFingerprint('mobile');
-    // 保留本次运行已分配的代理与池位信息，仅替换设备画像
-    Object.assign(profile, f, { proxy: profile.proxy, poolIdx: profile.poolIdx, poolSize: profile.poolSize });
+    // 保留本次运行已分配的代理与会话信息，仅替换设备画像（三元绑定中代理+会话不变）
+    Object.assign(profile, f, { proxy: profile.proxy, sid: profile.sid });
   }
   return profile;
 }
@@ -598,18 +676,19 @@ async function load(source, platformId): Promise<any> {
     for (let attempt = 1; attempt <= NETWORK.retries; attempt++) {
       if (isStopped()) throw new Error('已手动停止采集');
       const profile = resolveProfile(platformId);
-      const shortUA = (profile.userAgent || '').split(' ').slice(0, 2).join(' ');
+      // UA 展示前 5 个词（到设备型号级）：截 2 个词时 Android UA 只剩 "Mozilla/5.0 (Linux;"，日志无法区分端型
+      const shortUA = (profile.userAgent || '').split(' ').slice(0, 5).join(' ');
       runLog(
-        `请求[${profile.poolIdx != null ? `档案#${profile.poolIdx + 1}/${profile.poolSize}` : '临时指纹'}] ` +
+        `请求[${profile.sid ? `会话#${profile.sid}` : '临时指纹'}] ` +
           `引擎=浏览器 代理=${profile.proxy || '直连'} UA=${shortUA}（第${attempt}/${NETWORK.retries}次）`
       );
       try {
         const r = await loadPlaywright(source, platformId, profile);
-        if (profile.proxy) reportSuccess(profile.proxy);
+        reportSessionOk(profile.sid);
         runLog(`页面加载成功：${shortUrl(source)}（${(r.html.length / 1024).toFixed(0)}KB）`);
         return r;
       } catch (e) {
-        if (profile.proxy) reportFailure(profile.proxy);
+        markBadSession(profile.sid, 'transient');
         lastErr = e;
         runLog(`浏览器加载失败：${e.message} → 换指纹重试`);
         const gap = randomDelayMs();
@@ -618,20 +697,28 @@ async function load(source, platformId): Promise<any> {
       }
     }
   }
-  // fetch 兜底（同样走代理池轮换 + 随机指纹）
+  // fetch 兜底（浏览器 TLS 伪装 + 会话池轮换；HTTP 封禁语义化分类）
   if (pw) runLog('浏览器引擎不可用/连续失败，切换到 fetch 直取模式');
   for (let attempt = 1; attempt <= NETWORK.retries; attempt++) {
     if (isStopped()) throw new Error('已手动停止采集');
     const profile = resolveProfile(platformId);
-    runLog(`请求[${profile.poolIdx != null ? `档案#${profile.poolIdx + 1}/${profile.poolSize}` : '临时指纹'}] 引擎=fetch 代理=${profile.proxy || '直连'}（第${attempt}/${NETWORK.retries}次）`);
+    runLog(`请求[${profile.sid ? `会话#${profile.sid}` : '临时指纹'}] 引擎=fetch 代理=${profile.proxy || '直连'}（第${attempt}/${NETWORK.retries}次）`);
     try {
       const r = await loadFetch(source, profile);
-      if (profile.proxy) reportSuccess(profile.proxy);
+      reportSessionOk(profile.sid);
       runLog(`页面加载成功：${shortUrl(source)}（${(r.html.length / 1024).toFixed(0)}KB）`);
       return r;
     } catch (e) {
-      if (profile.proxy) reportFailure(profile.proxy);
       lastErr = e;
+      // 封禁语义化：按分类处置会话（ip-banned/session-expired → retire 整包丢弃；challenge → 提示浏览器降级）
+      const ban = e.ban;
+      if (ban) {
+        applyBanToSession(profile.sid, ban.kind);
+        runLog(`fetch 封禁语义判定[${ban.kind}]：${ban.hint}`);
+        if (ban.kind === 'challenge') runLog('处置=降级浏览器渲染通道（fetch 对 JS 挑战无解）');
+      } else {
+        markBadSession(profile.sid, 'transient');
+      }
       runLog(`fetch 加载失败：${e.message} → 换指纹重试`);
       const gap = randomDelayMs();
       runLog(`重试等待 ${(gap / 1000).toFixed(1)}s（按设置的请求间隔档位）`);
@@ -697,13 +784,18 @@ async function loadPlaywright(source, platformId, profile) {
       /* 读取响应体失败不影响主流程 */
     }
   });
-  // 轻量反 headless 检测：不少站点（唯品会等）检测到 webdriver 就拒绝渲染商品数据
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-    if (!window.chrome) window.chrome = { runtime: {} };
-  });
+  // 渲染层指纹注入（P1-4）：navigator/WebGL/Canvas 与所选设备档案一致（同会话稳定）；
+  // 含原 webdriver/plugins/chrome 反 headless 处理。临时档案（随机化关闭）保持原行为。
+  const inject = fingerprintInitScript(profile);
+  if (inject) await page.addInitScript(inject);
+  else {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      if (!window.chrome) window.chrome = { runtime: {} };
+    });
+  }
   // 注意：浏览器路径不伪造 X-Forwarded-For——WAF（如唯品会）校验 XFF 与 TCP 源 IP 一致性，
   // 不符直接拒绝加载。XFF 伪造只保留在 fetch 引擎。
   await page.setExtraHTTPHeaders(profile.acceptLanguage ? { 'Accept-Language': profile.acceptLanguage } : {});
@@ -754,6 +846,11 @@ async function loadPlaywright(source, platformId, profile) {
 }
 
 async function pw_launch() {
+  // 优先 Patchright（如已安装），否则官方 Playwright（--disable-blink-features=AutomationControlled 兜底）
+  const pr = await getPatchright();
+  if (pr) {
+    return pr.chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  }
   const pw = await getPlaywright();
   return pw.chromium.launch({
     headless: true,
@@ -762,7 +859,6 @@ async function pw_launch() {
 }
 
 async function loadFetch(source, profile) {
-  const dispatcher = await getProxyDispatcher(profile.proxy);
   const headers = {
     'User-Agent': profile.userAgent || pickUA(),
     'Accept-Language': profile.acceptLanguage || 'zh-CN,zh;q=0.9',
@@ -770,19 +866,24 @@ async function loadFetch(source, profile) {
   };
   // 随机档案 Cookie：模拟「不同访客」的本地痕迹
   if (profile.cookies?.length) headers['Cookie'] = profile.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-  // 单次尝试：重试由 load() 的外层循环负责（换指纹 + 按设置档位延迟），此处只保证全局节流
+  // 单次尝试：重试由 load() 的外层循环负责（换会话 + 按设置档位延迟），此处只保证全局节流
   await netThrottle(runLog);
+  // TLS 伪装通道：impit 按真浏览器逐项对齐握手（JA3/HTTP2），不可用时自动降级 undici
+  let res;
   try {
-    const res = await undiciFetch(source, {
-      headers,
-      signal: AbortSignal.timeout(NETWORK.timeout),
-      dispatcher,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return { html: await res.text(), page: null, browser: null };
+    res = await impersonatedFetch({ url: source, headers, proxy: profile.proxy, timeout: NETWORK.timeout });
   } catch (e) {
     throw new Error(fetchErrText(e));
   }
+  if (!res.ok && res.status !== 200) {
+    // 封禁语义化：把状态码+响应体分类成 session-expired / ip-banned / challenge / soft-block
+    const snippet = await res.text().then((t) => t.slice(0, 1500)).catch(() => '');
+    const ban = classifyBan({ status: res.status, body: snippet });
+    const err: any = new Error(`HTTP ${res.status}${ban.hint ? `（${ban.hint}）` : ''}`);
+    err.ban = ban;
+    throw err;
+  }
+  return { html: await res.text(), page: null, browser: null };
 }
 
 async function closePage(browser) {

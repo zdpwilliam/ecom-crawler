@@ -2,7 +2,7 @@
 import { resolveAdapters, MockAdapter } from './adapters/registry.ts';
 import { addRecords } from './storage.ts';
 import { DATA_TYPES } from './types.ts';
-import { refreshProfilePool } from './fingerprint.ts';
+import { refreshProfilePool } from './session-pool.ts';
 import { runLog } from './runlog.ts';
 import { resetStop, isStopped } from './stop-flag.ts';
 
@@ -28,13 +28,13 @@ export async function runCollection(job: {
   // 新一次采集开始：复位停止标志
   resetStop();
 
-  // 每次运行前重建请求档案池：10 组随机指纹（UA/伪造IP/语言/视口/随机Cookie），
-  // 本次运行内的每个请求都从池里随机抽一组使用。
+  // 每次运行前重建会话池：10 个「虚拟用户」（Cookie+代理+指纹三元绑定的会话），
+  // 登录态通道按平台粘性固定会话，匿名通道在会话间轮换。
   const pool = refreshProfilePool(10);
   runLog(
     `开始采集：平台=${platform} 类型=${dataType} 查询="${query || itemId || ''}" 数量=${limit || '默认'}` +
       (withDetails ? ` 带详情×${detailLimit || 3}` : '') +
-      (pool.length ? ` ｜ 已生成 ${pool.length} 组随机请求档案` : ' ｜ 指纹随机化已关闭')
+      (pool.length ? ` ｜ 已生成 ${pool.length} 个会话（Cookie+代理+指纹绑定）` : ' ｜ 指纹随机化已关闭')
   );
 
   // 强制 mock：无凭证验证流程

@@ -1,8 +1,8 @@
 // 亚马逊直连通道：搜索页 SSR HTML 解析 + 详情页 twister 数据提 SPU/SKU。
 // 亚马逊搜索/详情页均为服务端渲染（1.4MB+ 完整 HTML，无验证码时字段齐全），
 // 无需浏览器渲染；亚马逊是海外站，请求必须走代理（VPN）。
-import { fetch as undiciFetch } from 'undici';
-import { pickProxy, getProxyDispatcher } from '../../proxy-pool.ts';
+import { pickProxy } from '../../proxy-pool.ts';
+import { impersonatedFetch } from '../../http-client.ts';
 import { mapApiProducts } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
@@ -17,12 +17,12 @@ async function aget(url, tries = 3, log = (_m?: string) => {}) {
       if (isStopped()) throw new Error('已手动停止采集');
       await netThrottle(log); // 全局节流：跨通道共用计时
       const proxy = pickProxy();
-      const dispatcher = proxy ? await getProxyDispatcher(proxy) : undefined;
-      log(`亚马逊请求（第${i}/${tries}次）代理=${proxy || '直连'}`);
-      const res = await undiciFetch(url, {
+      log(`亚马逊请求（第${i}/${tries}次）代理=${proxy || '直连'}（TLS 伪装）`);
+      const res = await impersonatedFetch({
+        url,
         headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html,application/xhtml+xml' },
-        signal: AbortSignal.timeout(45000),
-        dispatcher,
+        timeout: 45000,
+        proxy,
       });
       const html = await res.text();
       if (res.status !== 200) throw new Error(`HTTP ${res.status}`);

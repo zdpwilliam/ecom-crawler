@@ -11,7 +11,12 @@
 - **SQLite 数据库存储**：用 Node 内置 `node:sqlite` 取代旧版 JSON 文件，支持 SQL 查询 / 索引 / 定时任务与运行记录。旧 `store.json` 首次启动自动迁移。
 - **存储后端可切换（SQLite / 本地 MongoDB）**：通过 `STORE_BACKEND` 环境变量在嵌入式 SQLite 与本地 MongoDB 文档数据库之间切换，业务代码零改动（统一 `server/storage.ts` 门面）。
 - **存储管理（查看位置 + 清理）**：仪表盘与 API 可随时查看数据目录、数据库文件、各目录大小与记录数；支持按类型/平台/关键字范围**安全清理**（弹框列出将删除的数据明细，二次确认）。「数据管理」页与「存储管理」共用同一清理弹框。
-- **请求指纹随机化（端型可选）**：从**固定真实设备池**抽取完整档案（UA ↔ 平台 ↔ 视口 ↔ 语言 ↔ Client Hints 严格同源，30 套），支持按端型筛选——**混合端（30 套）/ 仅桌面端（10 套）/ 仅手机端含平板（20 套）**，系统设置页切换保存即生效；每次请求还随机生成出口 IP（伪造 X-Forwarded-For）并配合代理池轮换。
+- **请求指纹随机化（端型可选 + 统计采样）**：从**固定真实设备池**抽取完整档案（UA ↔ 平台 ↔ 视口 ↔ 语言 ↔ Client Hints 严格同源，30 套），支持按端型筛选——**混合端（30 套）/ 仅桌面端（10 套）/ 仅手机端含平板（20 套）**，系统设置页切换保存即生效；抽档按**真实流量分布加权**（移动端/Chrome 系/国产浏览器高频，而非均匀随机）；每次请求还随机生成出口 IP（伪造 X-Forwarded-For）并配合代理池轮换。
+- **会话池三元绑定（SessionPool）**：Cookie + 代理 IP + 指纹打包成一个「虚拟用户」整体轮换（对齐 Crawlee SessionPool 范式）；**登录态通道强制粘性**——同一平台整个采集运行期固定同一会话，杜绝「烧掉的 IP 配新 Cookie」的自相矛盾组合。
+- **直连通道 TLS 指纹伪装**：全部 HTTP 直连（mtop 签名/唯品会 mapi/京东/苏宁/华为/亚马逊/登录态探针）统一走 **impit**（curl-impersonate 思路），TLS 握手（JA3/JA4）与 HTTP/2 参数逐项对齐真 Chrome；impit 不可用时自动降级 undici。
+- **封禁识别语义化**：参考 Crawlee `session.retire()/markBad()`——明确区分**会话失效（提示重登）/ IP 被封（retire 整包丢弃换会话）/ 风控挑战（降级浏览器渲染）/ 频率软限流（退避）**四类处置，不再把挑战页粗暴归 unknown。
+- **渲染层指纹注入**：浏览器渲染路径按所选设备档案注入一致性覆盖（navigator 平台/语言/硬件并发 + WebGL 厂商渲染器 + Canvas 会话级稳定微噪声）；已内置 **Patchright**（Playwright 反检测补丁版）自动探测，安装即用。
+- **自适应解析（对抗改版失明）**：成功采集时记录商品卡片「结构指纹」快照（`data/adaptive-selectors.json`）；选择器失配时按快照相似度在重复容器簇里重定位，成功则告警并更新快照。
 - **代理池自动轮换**：从 `data/proxies.txt` 或 `CRAWL_PROXY_POOL` 载入代理，轮询分配，按健康度自动剔除/冷却，请求失败自动切下一个。
 - **定时采集**：任务存于数据库，按周期自动运行并写运行记录；仪表盘可增删/手动触发。
 - **爬虫运行时设置**：随机延迟区间 / 超时 / 重试 / 渲染等待 / Playwright 开关 / 指纹随机化开关，仪表盘修改后**立即对后续每次调用生效**，持久化到 `data/settings.tson`。重试等待同样按设置的延迟档位随机停顿（日志会显示「重试等待 Xs」），不再使用硬编码退避。
@@ -320,7 +325,10 @@ server/
   db.ts                 SQLite 存储（node:sqlite）+ jobs/job_runs + 查询/导出/清空
   storage.ts            存储门面（按 STORE_BACKEND 选 SQLite / MongoDB，全 async）
   storage-mongo.ts      本地 MongoDB 文档数据库后端（惰性依赖 mongodb）
-  fingerprint.ts        请求指纹随机化（随机 UA / 出口 IP / 语言 / 视口）
+  fingerprint.ts        请求指纹随机化（真实设备池 + 统计加权采样 / 出口 IP / 语言 / 视口）
+  session-pool.ts       会话池（Cookie+代理+指纹三元绑定，登录态通道粘性 + 封禁语义化）
+  http-client.ts        统一 HTTP 客户端（impit TLS 伪装 + undici 兜底）
+  fp-inject.ts          渲染层指纹注入（navigator/WebGL/Canvas 与设备档案一致）
   store.ts              兼容层（再导出 storage.ts）
   export.ts             CSV / JSON 导出
   proxy-pool.ts         代理池（轮换 + 健康度冷却）

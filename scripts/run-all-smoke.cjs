@@ -10,6 +10,7 @@ const TESTS = path.resolve(__dirname, '..', 'tests');
 const SUITE = [
   'test-cookie-tool.mjs', // 单元：登录自动关闭决策（无网络，秒级）
   'test-opencli-adapter.mjs', // 单元：OpenCLI 桥接归一化（离线，秒级；末条跑真实 opencli 命令）
+  'test-session-pool.mjs', // 单元：会话池三元绑定 + 封禁语义化 + 统计采样（离线，秒级）
   'smoke-new-ui.cjs',
   'smoke-round28.cjs',
   'smoke-round29.cjs',

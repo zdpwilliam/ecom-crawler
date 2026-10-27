@@ -1,8 +1,8 @@
 // 苏宁易购直连通道：详情页 SSR 内嵌数据（var sn = {...}）提 SPU/SKU。
 // 苏宁详情页是服务端渲染（208KB，含标题/类目/店铺/clusterMap 变体映射/规格表），
 // 无需浏览器；搜索页 SSR 无价格（价格由前端另行填充），搜索仍走浏览器渲染路径。
-import { fetch as undiciFetch } from 'undici';
-import { pickProxy, getProxyDispatcher } from '../../proxy-pool.ts';
+import { pickProxy } from '../../proxy-pool.ts';
+import { impersonatedFetch } from '../../http-client.ts';
 import { mapApiProducts } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
@@ -17,12 +17,12 @@ async function sget(url, tries = 3, log = (_m?: string) => {}) {
       await netThrottle(log); // 全局节流：跨通道共用计时
       // 苏宁是国内站：最后一次尝试绕过代理直连（VPN 断连时仍可采，代理不可达不再空耗重试）
       const proxy = i === tries ? undefined : pickProxy();
-      const dispatcher = proxy ? await getProxyDispatcher(proxy) : undefined;
-      log(`苏宁请求（第${i}/${tries}次）代理=${proxy ? 'VPN' : '直连'}${proxy && i === tries ? '（代理异常，改直连）' : ''}`);
-      const res = await undiciFetch(url, {
+      log(`苏宁请求（第${i}/${tries}次）代理=${proxy ? 'VPN' : '直连'}${proxy && i === tries ? '（代理异常，改直连）' : ''}（TLS 伪装）`);
+      const res = await impersonatedFetch({
+        url,
         headers: { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9' },
-        signal: AbortSignal.timeout(30000),
-        dispatcher,
+        timeout: 30000,
+        proxy,
       });
       if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
       return await res.text();

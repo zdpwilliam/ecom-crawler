@@ -19,11 +19,13 @@ function check(name, ok) {
   check('其他平台无 mobileOnly（vip/suning/taobao）', !cfgMod.SCRAPE_CONFIG.vip?.mobileOnly && !cfgMod.SCRAPE_CONFIG.suning?.mobileOnly && !cfgMod.SCRAPE_CONFIG.taobao?.mobileOnly);
 
   const fp = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/fingerprint.ts');
+  // 档案池已升级为会话池（Cookie+代理+指纹三元绑定）：refreshProfilePool 从 session-pool 导入
+  const sp = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/session-pool.ts');
   const gen = await import('file://' + process.cwd().replace(/\\/g, '/') + '/src/server/adapters/scrape/generic.ts');
 
   // 全局端型 mixed：dewu 必须全部强制为移动档案
   fp.setFingerprintMode('mixed');
-  fp.refreshProfilePool(10);
+  sp.refreshProfilePool(10);
   const MOBILE_UA_RE = /iPhone|iPad|Android|Mobile|HRY-|Pixel/;
   let allMobile = true, allMobileUA = true;
   for (let i = 0; i < 12; i++) {
@@ -36,7 +38,7 @@ function check(name, ok) {
 
   // 全局端型 desktop：dewu 仍强制移动；vip/suning 跟随全局保持桌面
   fp.setFingerprintMode('desktop');
-  fp.refreshProfilePool(10);
+  sp.refreshProfilePool(10);
   const dewuMobile = gen.resolveProfile('dewu');
   const vipP = gen.resolveProfile('vip');
   const suningP = gen.resolveProfile('suning');
@@ -44,7 +46,7 @@ function check(name, ok) {
   check('desktop 模式下 vip 档案保持桌面（行为不变）', vipP.mobile === false && !MOBILE_UA_RE.test(vipP.userAgent || ''));
   check('desktop 模式下 suning 档案保持桌面（行为不变）', suningP.mobile === false);
   fp.setFingerprintMode('mixed');
-  fp.refreshProfilePool(10);
+  sp.refreshProfilePool(10);
 
   // ---------- 2. Playwright 上下文：isMobile/hasTouch 与移动档案联动（自托管空页验证，无外网） ----------
   const b = await chromium.launch({ headless: true });

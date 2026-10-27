@@ -6,22 +6,23 @@
 //       可能含尾逗号 → 平衡括号截取 + 去尾逗号后 JSON.parse。
 // 搜索：api.m.jd.com 需要签名且 functionId 随版本变化，匿名直连不可行 —— 搜索仍走
 //       浏览器渲染路径（generic.js 的响应捕获已加入 api.m.jd.com，登录态下可拿到结构化数据）。
-import { fetch as undiciFetch } from 'undici';
+import { impersonatedFetch } from '../../http-client.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
 
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
-/** 带 UA 直取 HTML（简单重试）。 */
+/** 带 UA 直取 HTML（简单重试，TLS 伪装）。 */
 async function jget(url, tries = 3, log = (_m?: string) => {}) {
   let lastErr;
   for (let i = 1; i <= tries; i++) {
     try {
       if (isStopped()) throw new Error('已手动停止采集');
       await netThrottle(log); // 全局节流：跨通道共用计时
-      const res = await undiciFetch(url, {
+      const res = await impersonatedFetch({
+        url,
         headers: { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9', Referer: 'https://item.m.jd.com/' },
-        signal: AbortSignal.timeout(30000),
+        timeout: 30000,
       });
       if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
       return await res.text();

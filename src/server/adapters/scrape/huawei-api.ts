@@ -6,7 +6,7 @@
 //       productOptions.gbomAttrMappings（规格维度 → 各 SKU 的选项映射）。
 //       跳转链每跳都会 set-cookie（HWWAFSESID 等），必须带 Cookie 罐逐跳跟随。
 import crypto from 'node:crypto';
-import { fetch as undiciFetch } from 'undici';
+import { impersonatedFetch } from '../../http-client.ts';
 import { mapApiProducts } from './api-parse.ts';
 import { isStopped } from '../../stop-flag.ts';
 import { netThrottle } from './config.ts';
@@ -22,10 +22,7 @@ const BASE_HEADERS = {
 /** 会话引导：GET csrftoken.js 收 set-cookie（CSRF-TOKEN / euid / HWWAFSESID）。 */
 async function huaweiSession(log) {
   await netThrottle(log); // 全局节流：跨通道共用计时
-  const res = await undiciFetch('https://openapi.vmall.com/csrftoken.js', {
-    headers: BASE_HEADERS,
-    signal: AbortSignal.timeout(20000),
-  });
+  const res = await impersonatedFetch({ url: 'https://openapi.vmall.com/csrftoken.js', headers: BASE_HEADERS, timeout: 20000 });
   const setCookies = res.headers.getSetCookie?.() || [];
   const jar = setCookies.map((c) => c.split(';')[0]).filter(Boolean);
   const csrf = jar.find((c) => c.startsWith('CSRF-TOKEN='))?.split('=')[1] || '';
@@ -43,10 +40,11 @@ async function fetchWithRedirects(url, tries = 3, log = (_m?: string) => {}) {
       let jar = [];
       let cur = url;
       for (let hop = 0; hop < 6; hop++) {
-        const res = await undiciFetch(cur, {
+        const res = await impersonatedFetch({
+          url: cur,
           headers: { ...BASE_HEADERS, ...(jar.length ? { Cookie: jar.join('; ') } : {}) },
           redirect: 'manual',
-          signal: AbortSignal.timeout(30000),
+          timeout: 30000,
         });
         const sc = res.headers.getSetCookie?.() || [];
         for (const c of sc) {
@@ -54,7 +52,7 @@ async function fetchWithRedirects(url, tries = 3, log = (_m?: string) => {}) {
           if (kv.includes('=') && !jar.some((x) => x.startsWith(kv.split('=')[0] + '='))) jar.push(kv);
         }
         if ([301, 302, 303, 307, 308].includes(res.status)) {
-          const loc = res.headers.get('location') || '';
+          const loc = res.headers.get?.('location') || '';
           if (!loc) throw new Error(`跳转无 Location（HTTP ${res.status}）`);
           cur = new URL(loc, cur).href;
           continue;
@@ -94,11 +92,12 @@ export async function fetchHuaweiProducts(opts: { query?: string; limit?: number
     searchFlag: '0',
     brandType: 0,
   };
-  const res = await undiciFetch('https://openapi.vmall.com/mcp/v1/search/queryPrd', {
+  const res = await impersonatedFetch({
+    url: 'https://openapi.vmall.com/mcp/v1/search/queryPrd',
     method: 'POST',
     headers: { ...BASE_HEADERS, 'Content-Type': 'application/json;charset=UTF-8', Cookie: jar.join('; '), csrfToken: csrf },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
+    timeout: 30000,
   });
   if (res.status !== 200) {
     log(`华为搜索接口 HTTP ${res.status}（可能风控），回退浏览器渲染`);

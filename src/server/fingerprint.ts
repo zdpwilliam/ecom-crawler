@@ -6,11 +6,10 @@
 //   每套档案是「真实存在的一台设备」的完整画像 —— UA ↔ 操作系统 ↔ 视口 ↔ 语言 ↔
 //   Client Hints (sec-ch-ua) 彼此一致，绝不做跨设备拼接（如 Safari UA 配 Windows 视口、
 //   Edge UA 缺 sec-ch-ua 等），避免一致性校验露馅。追加生成的档案同样按此规则合成。
-//   采集运行前 refreshProfilePool(n) 从池中随机抽 n 套组成本次运行的请求档案池。
+//   采集运行前 session-pool.renewSessionPool(n) 从池中按统计权重抽 n 套组成本次运行的会话池。
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pickProxy } from './proxy-pool.ts';
 import { DATA_DIR } from './paths.ts';
 
 const EXTRA_FILE = path.join(DATA_DIR, 'fingerprints-extra.json');
@@ -478,7 +477,7 @@ function poolFor(mode = _fpMode) {
 }
 
 export function randomUA() {
-  return pick(allPool()).ua;
+  return (weightedPick(allPool()) || pick(allPool())).ua;
 }
 
 // ---------- 随机出口 IP（用于 X-Forwarded-For / X-Real-IP 伪造） ----------
@@ -500,6 +499,47 @@ export function randomIP() {
   return ip.join('.');
 }
 
+// ---------- 统计采样（P1-6）：按真实流量分布加权抽取，而非均匀随机 ----------
+// 30 套档案是「离散的真实设备」，真实世界里它们的出现频率并不相等：
+// 移动端占中国电商流量约 7 成、Chrome 系占桌面大头、华为/微信内嵌在国产生态里高频出现。
+// 权重表按「设备家族」匹配（新增档案自动继承同族权重，无需逐条标注）。
+const FAMILY_WEIGHTS = [
+  [/iPhone/i, 24], // iPhone 全家族（Safari/微信/QQ/支付宝内嵌合计约 1/4 流量）
+  [/Android.*Chrome 移动/i, 22], // Android 主力 Chrome
+  [/华为|HuaweiBrowser|夸克|Quark/i, 8], // 华为浏览器 + 夸克（国产高频）
+  [/vivo|OPPO|荣耀/i, 5], // 国产厂商浏览器
+  [/SamsungBrowser/i, 2], // 三星国行份额小
+  [/iPad/i, 3], // 平板
+  [/Windows.*Chrome/i, 12], // Windows Chrome（桌面大头）
+  [/Windows.*Edge/i, 7], // Windows Edge（Win11 默认浏览器）
+  [/Windows.*Firefox/i, 2],
+  [/macOS.*Chrome/i, 5],
+  [/macOS.*Safari/i, 3],
+  [/macOS.*Edge|macOS.*Firefox/i, 2],
+  [/微信|MicroMessenger/i, 6], // 微信内嵌（与 iPhone 重叠时取较大者）
+] as const;
+
+function deviceWeight(f: { device?: string; mobile?: boolean }) {
+  const d = String(f.device || '');
+  let w = 1;
+  for (const [re, weight] of FAMILY_WEIGHTS) {
+    if (re.test(d)) w = Math.max(w, weight);
+  }
+  if (w === 1) w = f.mobile ? 4 : 3; // 未识别家族：给中性偏移权重
+  return w;
+}
+
+function weightedPick(arr) {
+  if (!arr.length) return undefined;
+  const weights = arr.map((f) => deviceWeight(f));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < arr.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return arr[i];
+  }
+  return arr[arr.length - 1];
+}
 const LANGS = [
   'zh-CN,zh;q=0.9', 'zh-CN,zh;q=0.9,en;q=0.8', 'zh-CN,zh;q=0.9,en-US;q=0.8',
   'zh-TW,zh;q=0.9', 'en-US,en;q=0.9',
@@ -509,13 +549,14 @@ export function randomAcceptLanguage() {
 }
 
 export function randomViewport() {
-  return pick(allPool()).viewport;
+  return (weightedPick(allPool()) || pick(allPool())).viewport;
 }
 
 // 从固定池抽一套完整设备档案（UA/平台/视口/Client Hints 严格同源），伪造 IP 现场生成。
-// 按当前端型模式（mixed/desktop/mobile）在对应子池内抽取。
+// 按当前端型模式（mixed/desktop/mobile）在对应子池内抽取；统计加权（P1-6）：
+// 抽中频率与真实流量分布对齐（移动端/Chrome 系/国产浏览器高频），而非 30 套均匀随机。
 export function randomFingerprint(mode = _fpMode) {
-  const f = pick(poolFor(mode));
+  const f = weightedPick(poolFor(mode)) || pick(poolFor(mode));
   const acceptLanguage = pick(f.langs);
   return {
     userAgent: f.ua,
@@ -549,36 +590,8 @@ export function randomCookies() {
   ];
 }
 
-// ---------- 请求档案池：每次运行前生成 N 组，逐请求随机抽取 ----------
-// 一次采集会发出多个请求（列表页 + 各详情页）。若每个请求都临时随机生成指纹，
-// 同一次运行内的「身份」彼此毫无关联，反而不像真人；先建 10 组档案、每次请求
-// 随机抽一组，既保留随机性又让同一访客的多请求看起来一致。
-let _pool = null;
-
-/** 每次采集运行前调用：重新生成 n 组完整请求档案（UA/伪造IP/语言/视口/随机Cookie）。 */
-export function refreshProfilePool(n = 10) {
-  if (!fingerprintEnabled()) {
-    _pool = null;
-    return [];
-  }
-  _pool = Array.from({ length: n }, () => ({ ...randomFingerprint(), cookies: randomCookies() }));
-  return _pool;
-}
-
-export function getProfilePool() {
-  return _pool;
-}
-
-// 组合「代理池挑选 + 随机指纹」，每次请求调用一次。
-// 有档案池时随机抽一组（同一运行内身份一致）；否则现场随机生成。
-export function buildRequestProfile() {
-  const proxy = pickProxy();
-  if (!fingerprintEnabled()) {
-    return { proxy, userAgent: '', acceptLanguage: 'zh-CN,zh;q=0.9', ip: '', locale: 'zh-CN', viewport: [1280, 800] };
-  }
-  if (_pool && _pool.length) {
-    const idx = Math.floor(Math.random() * _pool.length);
-    return { poolIdx: idx, poolSize: _pool.length, proxy, ..._pool[idx] };
-  }
-  return { proxy, ...randomFingerprint() };
-}
+// ---------- 请求档案池：已升级为会话池（session-pool.ts） ----------
+// 旧「每次运行抽 N 组档案、逐请求随机」模型升级为「虚拟用户」模型：
+// Cookie + 代理 + 指纹三元绑定成一个会话整体轮换（Crawlee SessionPool 范式），
+// 登录态通道按平台粘性固定会话。档案生成入口见 session-pool.ts 的
+// renewSessionPool / refreshProfilePool / acquireSession（避免静态循环依赖，此处不再转发）。

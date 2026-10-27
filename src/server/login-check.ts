@@ -8,13 +8,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetch as undiciFetch } from 'undici';
 import { mtopCall } from './adapters/scrape/mtop-api.ts';
 import { fetchVipProducts } from './adapters/scrape/vip-api.ts';
 import { PLATFORMS } from './adapters/registry.ts';
 import { loadSettings } from './settings.ts';
 import { runLog } from './runlog.ts';
 import { DATA_DIR } from './paths.ts';
+import { acquireSession } from './session-pool.ts';
+import { impersonatedFetch } from './http-client.ts';
 
 const COOKIES_DIR = path.join(DATA_DIR, 'cookies');
 const STATUS_FILE = path.join(DATA_DIR, 'login-status.json');
@@ -118,17 +119,23 @@ async function probeVip(log: (m: string) => void) {
 async function probeJd(log: (m: string) => void) {
   const arr = loadCookieArr('jd');
   const cookieStr = arr.map((c) => `${c.name}=${c.value}`).join('; ');
+  // 会话三元绑定：探针与采集共用同一粘性会话的 UA（登录态 ↔ 指纹一致，避免 Cookie 换 UA 的错配信号）
+  const sess = acquireSession('jd', true);
+  const ua = sess.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
   log('探针目标：https://order.jd.com/center/list.action（订单中心，需登录）');
-  log(`注入 ${arr.length} 条 Cookie 发起请求（redirect=manual 观察跳转）`);
-  const r = await undiciFetch('https://order.jd.com/center/list.action', {
-    headers: { Cookie: cookieStr, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+  log(`注入 ${arr.length} 条 Cookie 发起请求（redirect=manual 观察跳转，引擎=${sess.userAgent ? `会话#${sess.sid}` : '默认'}）`);
+  // TLS 伪装通道：impit 对齐真 Chrome 握手（undici 裸 TLS 一眼被识别为非浏览器）
+  const r = await impersonatedFetch({
+    url: 'https://order.jd.com/center/list.action',
+    headers: { Cookie: cookieStr, 'User-Agent': ua },
+    proxy: sess.proxy,
     redirect: 'manual',
   });
-  log(`响应 HTTP ${r.status}`);
-  const loc = r.headers.get('location') || '';
-  if (r.status >= 300 && r.status < 400 && /passport|login/i.test(loc)) {
-    log(`被重定向到 ${loc.slice(0, 70)} → 判定登录态失效`);
-    return { status: 'invalid', detail: `订单中心 302 → ${loc.slice(0, 70)}（登录态失效）` };
+  log(`响应 HTTP ${r.status}（引擎=${r.engine}）`);
+  const loc = r.headers.get?.('location') || (r.headers as any)?.location || '';
+  if (r.status >= 300 && r.status < 400 && /passport|login/i.test(String(loc))) {
+    log(`被重定向到 ${String(loc).slice(0, 70)} → 判定登录态失效`);
+    return { status: 'invalid', detail: `订单中心 302 → ${String(loc).slice(0, 70)}（登录态失效）` };
   }
   if (r.status === 200) return { status: 'valid', detail: '订单中心返回 200（登录态有效）' };
   return { status: 'unknown', detail: `订单中心 HTTP ${r.status}，无法判定` };

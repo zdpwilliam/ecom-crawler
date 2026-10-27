@@ -11,7 +11,8 @@ import { preflight, migrationState, migrateAndSwitch } from './storage-migrate.t
 import { buildExport } from './export.ts';
 import { startScheduler, runJob } from './scheduler.ts';
 import { listProxies, poolSize, reloadProxies, addProxy, removeProxy, testAllProxies } from './proxy-pool.ts';
-import { buildRequestProfile, fingerprintEnabled, randomFingerprint, getFingerprintPool, getFingerprintMode, addFingerprints, clearFingerprints } from './fingerprint.ts';
+import { fingerprintEnabled, randomFingerprint, getFingerprintPool, getFingerprintMode, addFingerprints, clearFingerprints } from './fingerprint.ts';
+import { acquireSession, sessionStats, renewSessionPool } from './session-pool.ts';
 import { loadSettings, saveSettings, applySettings } from './settings.ts';
 import { getLogs } from './runlog.ts';
 import { requestStop } from './stop-flag.ts';
@@ -569,18 +570,22 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { status: 'ok', ...res2 });
     }
 
-    // 请求指纹随机化：预览一次随机生成的指纹（按端型模式从真实设备池抽档 + 伪造出口IP + 代理）
+    // 请求指纹随机化：预览一次随机生成的指纹（从会话池抽一个虚拟用户：Cookie+代理+指纹绑定）
     if (p === '/api/fingerprint/spawn' && req.method === 'GET') {
-      const profile = buildRequestProfile();
+      const st = sessionStats();
+      if (!st.total) renewSessionPool(10); // 服务启动后首次预览：自动建池（正常采集运行时会被 renew 覆盖）
+      const profile = acquireSession();
       return send(res, 200, {
         enabled: fingerprintEnabled(),
         mode: getFingerprintMode(),
         poolSize: getFingerprintPool().length,
         randomFingerprint: randomFingerprint(),
+        sessions: sessionStats(),
         profile: {
           proxy: profile.proxy, userAgent: profile.userAgent, ip: profile.ip,
           acceptLanguage: profile.acceptLanguage, viewport: profile.viewport,
           device: profile.device, secChUa: profile.secChUa, mobile: profile.mobile,
+          sid: profile.sid,
         },
       });
     }
