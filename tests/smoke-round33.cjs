@@ -54,8 +54,10 @@ const check = (name, ok) => {
   check('代理池 hint 指向「平台登录状态」', proxyBox && proxyBox.text.includes('平台登录状态'));
 
   // 4. 代理传输原理图：details 内嵌 SVG，主链路 5 节点 + 失败反馈环
+  //  用 #proxyDiagram 限定（round43 起设置页还有「数据抓取技术」面板，同样用 details.diag，
+  //  裸 details.diag 会先匹配到技术栈表而非原理图）
   const diag = await page.evaluate(() => {
-    const d = document.querySelector('details.diag');
+    const d = document.querySelector('#proxyDiagram');
     if (!d) return null;
     const svg = d.querySelector('svg');
     const txt = d.innerText;

@@ -5,6 +5,7 @@
 // 可传 persist=false 关闭。入库失败不影响测试结果展示（计 saved=0 并注明原因）。
 import { getScrapeAdapter } from './adapters/registry.ts';
 import { SCRAPE_CONFIG } from './adapters/scrape/config.ts';
+import { techAdvice, stepTech } from './adapters/scrape/tech-matrix.ts';
 import { addRecords } from './storage.ts';
 
 const PREVIEW_MAX = 2600; // 单步返回内容预览上限（字符）
@@ -77,9 +78,11 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
   if (!adapter) throw new Error(`未知平台：${platform}`);
   const cfg = SCRAPE_CONFIG[platform] || {};
   const steps = [];
+  // 技术通道标注：每步标注实际使用的技术，顶部给出该平台「哪种技术效果最好」的结论
+  const tech = { best: techAdvice(platform) };
 
   const step = (key, label) => {
-    const s = { key, label, ok: false, ms: 0, count: 0, saved: 0, url: '', detail: '', responseText: '', dataText: '' };
+    const s = { key, label, ok: false, ms: 0, count: 0, saved: 0, url: '', detail: '', responseText: '', dataText: '', tech: stepTech(platform, key) };
     steps.push(s);
     return s;
   };
@@ -116,7 +119,7 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
       s.detail = String(e.message || e).slice(0, 400);
     }
     const savedTotal = steps.reduce((n, x) => n + (x.saved || 0), 0);
-    return { platform, dataType, target, steps, savedTotal };
+    return { platform, dataType, target, steps, savedTotal, tech };
   }
 
   // ===== product：列表 → 详情 → 评价 → 问答 =====
@@ -244,5 +247,5 @@ export async function runTest({ platform, dataType = 'product', query = '手机'
   }
 
   const savedTotal = steps.reduce((n, x) => n + (x.saved || 0), 0);
-  return { platform, dataType, query, target: targetUrl || target, steps, savedTotal };
+  return { platform, dataType, query, target: targetUrl || target, steps, savedTotal, tech };
 }

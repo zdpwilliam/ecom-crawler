@@ -98,6 +98,12 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/platforms') return send(res, 200, listPlatforms());
     if (p === '/api/stats') return send(res, 200, await stats());
 
+    // 数据抓取技术矩阵：全站技术栈 + 各平台当前通道（设置页「抓取技术」面板用）
+    if (p === '/api/tech-matrix') {
+      const { TECH_STACK, TECH_MATRIX } = await import('./adapters/scrape/tech-matrix.ts');
+      return send(res, 200, { stack: TECH_STACK, matrix: TECH_MATRIX });
+    }
+
     // 运行日志（前端「采集中」模块轮询增量，滚动展示采集过程）
     if (p === '/api/logs') {
       const since = Number(url.searchParams.get('since'));

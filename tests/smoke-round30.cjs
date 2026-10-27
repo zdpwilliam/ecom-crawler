@@ -27,9 +27,32 @@ const check = (name, ok) => {
   check('TOP 凭证输入框已移除', (await page.locator('#setTopAppKey').count()) === 0 && (await page.locator('#topTestBtn').count()) === 0);
 
   // 5. 数据管理：补抓过的商品 SPU/SKU 在抽屉完整记录中
+  //  数据驱动：找一条 specs.spu+specs.skus 的记录；库被清理后无命中则现场对一条 VIP 记录补抓（验证详情补抓链路）
   await page.click('.nav-item[data-page="data"]');
   await page.waitForTimeout(800);
-  await page.fill('#dataSearch', '10086966141469');
+  let spuTarget = await page.evaluate(async () => {
+    const r = await (await fetch('/api/data?type=product&pageSize=100')).json();
+    return (r.rows || []).find((x) => x.specs && x.specs.spu && x.specs.skus && x.specs.skus.length) || null;
+  });
+  if (!spuTarget) {
+    const refetched = await page.evaluate(async () => {
+      const r = await (await fetch('/api/data?type=product&pageSize=100')).json();
+      const cand = (r.rows || []).find((x) => x.platform === 'vip' && (x.itemId || /^https?:\/\//.test(x.url || ''))) || (r.rows || []).find((x) => x.itemId || /^https?:\/\//.test(x.url || ''));
+      if (!cand) return null;
+      const resp = await fetch('/api/detail-refetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: cand.id }) });
+      const out = await resp.json();
+      return out.status === 'ok' ? cand : null;
+    });
+    if (refetched) {
+      await page.waitForTimeout(800);
+      spuTarget = await page.evaluate(async (tid) => {
+        const r = await (await fetch('/api/data?type=product&pageSize=100')).json();
+        return (r.rows || []).find((x) => x.id === tid && x.specs && x.specs.spu) || null;
+      }, refetched.id) || refetched;
+    }
+  }
+  check('存在可验证 SPU/SKU 的商品记录（现场补抓或历史数据）', !!spuTarget);
+  await page.fill('#dataSearch', spuTarget ? String(spuTarget.itemId || spuTarget.id).slice(0, 40) : '不存在的商品');
   await page.waitForTimeout(1500);
   await page.locator('#tableWrap [data-detail]').first().click();
   await page.waitForTimeout(500);

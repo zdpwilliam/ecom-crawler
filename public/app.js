@@ -24616,6 +24616,10 @@
               " \u9879 \uFF5C ",
               savedNote
             ] }),
+            r.tech?.best ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { className: "count", style: { margin: "0 0 8px", padding: "6px 10px", background: "var(--bg-soft, #f7f7f8)", borderLeft: "3px solid var(--accent)" }, children: [
+              "\u{1F3AF} \u8BE5\u5E73\u53F0\u6700\u4F73\u6280\u672F\uFF1A",
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("b", { children: r.tech.best })
+            ] }) : null,
             r.steps.map((s) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(TestStep, { s, platform: cfg.platform }, s.key))
           ] })
         );
@@ -24727,6 +24731,10 @@
         s.ms ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "badge", children: [
           (s.ms / 1e3).toFixed(1),
           "s"
+        ] }) : null,
+        s.tech ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "badge", title: `\u672C\u6B65\u9AA4\u4F7F\u7528\u7684\u6280\u672F\u901A\u9053\uFF1A${s.tech}`, children: [
+          "\u2699 ",
+          s.tech.length > 22 ? s.tech.slice(0, 22) + "\u2026" : s.tech
         ] }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { className: "btn-ghost", "data-diag": s.key, "data-url": s.url || "", style: { padding: "2px 10px", marginLeft: "auto" }, onClick: runDiagnose, children: "\u{1F52C} \u5B57\u6BB5\u8BCA\u65AD" })
       ] }),
@@ -25078,8 +25086,8 @@
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { id: "runLog", className: "log-box", hidden: !logOpen, ref: logBoxRef, children: logLines.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { children: l }, i)) }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "hint", children: [
           "\u300C\u4E00\u952E\u6D4B\u8BD5\u300D\u6309\u5F53\u524D\u5DF2\u9009\u5E73\u53F0 / \u6570\u636E\u7C7B\u578B / \u67E5\u8BE2\u8BCD\u53D1\u771F\u5B9E\u8BF7\u6C42\uFF0C\u5F39\u6846\u5C55\u793A",
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("b", { children: "\u6700\u7EC8\u94FE\u63A5 \u2192 \u8FD0\u884C\u72B6\u6001 \u2192 \u54CD\u5E94\u5185\u5BB9 \u2192 \u63D0\u53D6\u540E\u6570\u636E" }),
-          "\uFF0C\u53EF\u9010\u6B65\u505A\u5B57\u6BB5\u8BCA\u65AD\uFF1B\u786E\u8BA4\u901A\u9053\u53EF\u7528\u540E\u518D\u8FD0\u884C\u91C7\u96C6\u3002"
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("b", { children: "\u6700\u7EC8\u94FE\u63A5 \u2192 \u8FD0\u884C\u72B6\u6001\uFF08\u542B\u672C\u6B65\u6280\u672F\u901A\u9053\uFF09\u2192 \u54CD\u5E94\u5185\u5BB9 \u2192 \u63D0\u53D6\u540E\u6570\u636E" }),
+          "\uFF0C\u9876\u90E8\u7ED9\u51FA\u8BE5\u5E73\u53F0\u300C\u54EA\u79CD\u6280\u672F\u6548\u679C\u6700\u597D\u300D\u7684\u7ED3\u8BBA\uFF08\u5168\u91CF\u6280\u672F\u77E9\u9635\u89C1\u7CFB\u7EDF\u8BBE\u7F6E\u9875\u300C\u6570\u636E\u6293\u53D6\u6280\u672F\u300D\u9762\u677F\uFF09\uFF1B\u786E\u8BA4\u901A\u9053\u53EF\u7528\u540E\u518D\u8FD0\u884C\u91C7\u96C6\u3002"
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "panel", children: [
@@ -26296,6 +26304,10 @@ ${r.login?.detail || ""}`
         setLgSaveResult("\u4FDD\u5B58\u5931\u8D25\uFF1A" + e.message);
       }
     }
+    const [tech, setTech] = (0, import_react7.useState)(null);
+    (0, import_react7.useEffect)(() => {
+      apiJson("/api/tech-matrix").then(setTech).catch((e) => setTech({ error: e.message }));
+    }, []);
     const [settings, setSettings] = (0, import_react7.useState)({});
     const [settingsResult, setSettingsResult] = (0, import_react7.useState)("");
     const loadSettingsUi = (0, import_react7.useCallback)(async () => {
@@ -26931,6 +26943,61 @@ ${sum}
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u6570\u636E\u6293\u53D6\u6280\u672F" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "0 0 10px" }, children: [
+          "\u672C\u7CFB\u7EDF\u5B9E\u9645\u4F7F\u7528\u7684\u6293\u53D6\u6280\u672F\u4E0E\u5404\u5E73\u53F0\u5F53\u524D\u901A\u9053\u3002",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u901A\u9053\u914D\u7F6E\u4E0E\u4EE3\u7801\u5B9E\u73B0\u4E00\u4E00\u5BF9\u5E94" }),
+          "\uFF08\u641C\u7D22/\u8BE6\u60C5\u76F4\u8FDE\u4E0E\u5426\u7531\u5404\u5E73\u53F0\u9002\u914D\u5668\u914D\u7F6E\u51B3\u5B9A\uFF09\uFF1B\u300C\u4E00\u952E\u6D4B\u8BD5\u300D\u5F39\u7A97\u4E2D\u6BCF\u4E00\u6B65\u4E5F\u4F1A\u6807\u6CE8\u672C\u6B65\u9AA4\u4F7F\u7528\u7684\u6280\u672F\u901A\u9053\u3002\u6240\u6709\u300C\u76F4\u8FDE\u63A5\u53E3\u300D\u5747\u4E3A\u9006\u5411\u7F51\u9875\u7AEF\u6570\u636E\u63A5\u53E3\uFF0C",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u975E\u5B98\u65B9\u5F00\u653E API" }),
+          "\u3002"
+        ] }),
+        tech?.error ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { style: { color: "#9a3412" }, children: [
+          "\u6280\u672F\u77E9\u9635\u52A0\u8F7D\u5931\u8D25\uFF1A",
+          tech.error
+        ] }) : !tech ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "muted", children: "\u52A0\u8F7D\u4E2D\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", open: true, style: { marginBottom: 12 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("summary", { children: [
+              "\u5168\u7AD9\u6280\u672F\u6808\uFF08",
+              tech.stack.length,
+              " \u9879\uFF0C\u70B9\u51FB\u6298\u53E0\uFF09"
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { style: { marginTop: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 200 }, children: "\u6280\u672F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BF4\u660E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 220 }, children: "\u5B9E\u73B0\u843D\u70B9" })
+              ] }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: tech.stack.map((t) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.desc }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { style: { fontSize: 11 }, children: t.impl }) })
+              ] }, t.key)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "table-wrap", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u5E73\u53F0" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u641C\u7D22\u901A\u9053" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8BE6\u60C5\u901A\u9053" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u767B\u5F55\u8981\u6C42" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u54EA\u79CD\u6280\u672F\u6548\u679C\u6700\u597D" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: Object.entries(tech.matrix).map(([id, t]) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: t.name }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.search }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.detail }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "nowrap" }, children: t.needLogin === "\u5FC5\u9700" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { style: { color: "#9a3412" }, children: "\u5FC5\u9700" }) : t.needLogin }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: t.best })
+            ] }, id)) })
+          ] }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
+            "\u964D\u7EA7\u94FE\u8DEF\u7EDF\u4E00\u4E3A\uFF1A",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u76F4\u8FDE\u63A5\u53E3 \u2192 \u6D4F\u89C8\u5668\u6E32\u67D3\uFF08Patchright\uFF09\u2192 fetch \u76F4\u53D6\uFF08TLS \u4F2A\u88C5\uFF09" }),
+            "\uFF0C\u4EFB\u4E00\u5C42\u5931\u8D25\u81EA\u52A8\u6362\u4F1A\u8BDD/\u6307\u7EB9\u91CD\u8BD5\uFF1B\u8BE6\u60C5\u9875\u5728\u76F4\u8FDE\u5931\u8D25\u65F6\u7531\u6D4F\u89C8\u5668\u54CD\u5E94\u6355\u83B7 + \u5185\u5D4C JSON \u6DF1\u641C\u515C\u5E95\u3002"
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
         /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u4EE3\u7406\u6C60" }),
         /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { id: "proxyInfo", className: "kv", children: proxyInfo }),
@@ -27003,7 +27070,7 @@ ${sum}
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u767B\u5F55\u6001" }),
           "\uFF1A\u5DF2\u7531\u4E0A\u65B9\u300C\u5E73\u53F0\u767B\u5F55\u72B6\u6001\u300D\u7EDF\u4E00\u7BA1\u7406\uFF08\u67E5\u770B Cookie / \u68C0\u6D4B / \u91CD\u65B0\u767B\u5F55\uFF09\uFF0C\u91C7\u96C6\u65F6\u81EA\u52A8\u6CE8\u5165\u6709\u6548 Cookie\u3002"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", open: true, style: { marginTop: 10 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", id: "proxyDiagram", open: true, style: { marginTop: 10 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "\u4EE3\u7406\u4F20\u8F93\u539F\u7406\u56FE\uFF08\u8BF7\u6C42\u662F\u5982\u4F55\u8D70\u4EE3\u7406\u7684\uFF09" }),
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: 8, overflowX: "auto" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ProxyDiagram, {}) })
         ] })

@@ -62,8 +62,8 @@ function check(name, ok) {
     // 直接触发第一行点击打开抽屉（若首行无详情，通过 API 找有描述的）
     return document.querySelector('#tableWrap tbody tr') ? true : false;
   });
-  // 优先找有描述/图片的记录打开
-  const target = await page.evaluate(async () => {
+  // 优先找有描述/图片的记录打开；库被清理后无命中则现场补抓一条再查（自恢复，不依赖历史数据）
+  let target = await page.evaluate(async () => {
     const types = ['product'];
     for (const t of types) {
       const r = await (await fetch(`/api/data?type=${t}&pageSize=60`)).json();
@@ -72,6 +72,21 @@ function check(name, ok) {
     }
     return null;
   });
+  if (!target) {
+    await page.evaluate(async () => {
+      const r = await (await fetch('/api/data?type=product&pageSize=60')).json();
+      const cand = (r.rows || []).find((x) => x.platform === 'vip' && (x.itemId || /^https?:\/\//.test(x.url || ''))) || (r.rows || []).find((x) => x.itemId || /^https?:\/\//.test(x.url || ''));
+      if (!cand) return null;
+      const resp = await fetch('/api/detail-refetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: cand.id }) });
+      return (await resp.json()).status || null;
+    });
+    await page.waitForTimeout(800);
+    target = await page.evaluate(async () => {
+      const r = await (await fetch(`/api/data?type=product&pageSize=60`)).json();
+      const hit = (r.rows || []).find((x) => (x.description || '').length > 20 && (x.images || []).length > 1);
+      return hit ? { id: hit.id, desc: (hit.description || '').length, imgs: (hit.images || []).length } : null;
+    });
+  }
   check('库中存在带描述+多图的商品记录（详情扩展已产出）', !!target);
   if (target) {
     // UI 路径：搜索 itemId 让目标行出现在首行（openDrawer 是模块内函数，不可直接调）

@@ -362,6 +362,14 @@ export function SettingsPage() {
     }
   }
 
+  // ---------- 数据抓取技术 ----------
+  const [tech, setTech] = useState<any>(null);
+  useEffect(() => {
+    apiJson('/api/tech-matrix')
+      .then(setTech)
+      .catch((e: any) => setTech({ error: e.message }));
+  }, []);
+
   // ---------- 采集参数 ----------
   const [settings, setSettings] = useState<any>({});
   const [settingsResult, setSettingsResult] = useState('');
@@ -1056,6 +1064,78 @@ export function SettingsPage() {
         </div>
       </section>
 
+      {/* ═══ 面板 2.5 · 数据抓取技术 ═══ */}
+      <section className="panel">
+        <h2>数据抓取技术</h2>
+        <p className="hint" style={{ margin: '0 0 10px' }}>
+          本系统实际使用的抓取技术与各平台当前通道。<b>通道配置与代码实现一一对应</b>（搜索/详情直连与否由各平台适配器配置决定）；「一键测试」弹窗中每一步也会标注本步骤使用的技术通道。所有「直连接口」均为逆向网页端数据接口，<b>非官方开放 API</b>。
+        </p>
+        {tech?.error ? (
+          <p style={{ color: '#9a3412' }}>技术矩阵加载失败：{tech.error}</p>
+        ) : !tech ? (
+          <p className="muted">加载中…</p>
+        ) : (
+          <>
+            {/* 全站技术栈 */}
+            <details className="diag" open style={{ marginBottom: 12 }}>
+              <summary>全站技术栈（{tech.stack.length} 项，点击折叠）</summary>
+              <table style={{ marginTop: 8 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 200 }}>技术</th>
+                    <th>说明</th>
+                    <th style={{ width: 220 }}>实现落点</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tech.stack.map((t: any) => (
+                    <tr key={t.key}>
+                      <td>
+                        <b>{t.name}</b>
+                      </td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.desc}</td>
+                      <td>
+                        <code style={{ fontSize: 11 }}>{t.impl}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+            {/* 各平台通道矩阵 */}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>平台</th>
+                    <th>搜索通道</th>
+                    <th>详情通道</th>
+                    <th>登录要求</th>
+                    <th>哪种技术效果最好</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(tech.matrix).map(([id, t]: [string, any]) => (
+                    <tr key={id}>
+                      <td>
+                        <b>{t.name}</b>
+                      </td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.search}</td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.detail}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{t.needLogin === '必需' ? <b style={{ color: '#9a3412' }}>必需</b> : t.needLogin}</td>
+                      <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{t.best}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint">
+              降级链路统一为：<b>直连接口 → 浏览器渲染（Patchright）→ fetch 直取（TLS 伪装）</b>，任一层失败自动换会话/指纹重试；详情页在直连失败时由浏览器响应捕获 + 内嵌 JSON 深搜兜底。
+            </p>
+          </>
+        )}
+      </section>
+
       {/* ═══ 面板 3 · 代理池 ═══ */}
       <section className="panel">
         <h2>代理池</h2>
@@ -1143,7 +1223,7 @@ export function SettingsPage() {
           <br />
           <b>登录态</b>：已由上方「平台登录状态」统一管理（查看 Cookie / 检测 / 重新登录），采集时自动注入有效 Cookie。
         </p>
-        <details className="diag" open style={{ marginTop: 10 }}>
+        <details className="diag" id="proxyDiagram" open style={{ marginTop: 10 }}>
           <summary>代理传输原理图（请求是如何走代理的）</summary>
           <div style={{ marginTop: 8, overflowX: 'auto' }}>
             <ProxyDiagram />

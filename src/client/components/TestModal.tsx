@@ -32,6 +32,11 @@ export function TestModal(props: { open: boolean; meta: string; cfg: any; onClos
           <p className="count" style={{ margin: '0 0 8px' }}>
             测试目标：{r.target || '—'} ｜ 通过 {pass}/{r.steps.length} 项 ｜ {savedNote}
           </p>
+          {r.tech?.best ? (
+            <p className="count" style={{ margin: '0 0 8px', padding: '6px 10px', background: 'var(--bg-soft, #f7f7f8)', borderLeft: '3px solid var(--accent)' }}>
+              🎯 该平台最佳技术：<b>{r.tech.best}</b>
+            </p>
+          ) : null}
           {r.steps.map((s: any) => (
             <TestStep key={s.key} s={s} platform={cfg.platform} />
           ))}
@@ -152,6 +157,11 @@ function TestStep(props: { s: any; platform: string }) {
           <span className="badge ok">入库 {s.saved}</span>
         ) : null}
         {s.ms ? <span className="badge">{(s.ms / 1000).toFixed(1)}s</span> : null}
+        {s.tech ? (
+          <span className="badge" title={`本步骤使用的技术通道：${s.tech}`}>
+            ⚙ {s.tech.length > 22 ? s.tech.slice(0, 22) + '…' : s.tech}
+          </span>
+        ) : null}
         <button className="btn-ghost" data-diag={s.key} data-url={s.url || ''} style={{ padding: '2px 10px', marginLeft: 'auto' }} onClick={runDiagnose}>
           🔬 字段诊断
         </button>

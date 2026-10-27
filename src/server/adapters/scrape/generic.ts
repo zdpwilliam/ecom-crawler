@@ -843,7 +843,19 @@ async function loadPlaywright(source, platformId, profile) {
   } catch {
     await page.waitForTimeout(NETWORK.renderWait);
   }
-  const html = await page.content();
+  // 快照 HTML：跳转瞬间 content() 也会抛 "Execution context was destroyed"，
+  // 等新文档 domcontentloaded 后重试一次；仍失败则明确报错（由 load() 换会话重试兜底）
+  let html = '';
+  try {
+    html = await page.content();
+  } catch {
+    try {
+      await page.waitForLoadState('domcontentloaded', { timeout: 8000 });
+      html = await page.content();
+    } catch {
+      throw new Error('页面在渲染完成前发生跳转，未能拿到渲染后 HTML');
+    }
+  }
   // 给接口响应留一点收尾时间（渲染完成的最后时刻可能还有 XHR 落地）
   await page.waitForTimeout(400).catch(() => {});
   return { html, page, browser, tfsBlocked, apiBodies };
@@ -1146,10 +1158,21 @@ export class GenericScrapeAdapter extends BaseAdapter {
       let detailInfo = { description: '', images: [], props: null };
       if (directSku && (spu || skus.length)) runLog(`已采用详情接口结构化 SPU/SKU（SPU ${spu ? '✓' : '✗'}，SKU ${skus.length} 条）`);
       if (page) {
-        const rawReviews = await inBrowserExtractReviews(page);
-        if (rawReviews.length) reviews = normalizeReviews(rawReviews, cfg);
-        const rawQa = await inBrowserExtractQa(page);
-        if (rawQa.length) qa = normalizeQa(rawQa, cfg);
+        // 评论/问答浏览器抽取：页面可能在加载完成后发生 JS 跳转（如唯品会风控壳页重定向），
+        // evaluate 会抛 "Execution context was destroyed"。此处只降级不中断——
+        // 直连接口已拿到的 SPU/SKU 与页面 HTML 兜底解析必须保留。
+        try {
+          const rawReviews = await inBrowserExtractReviews(page);
+          if (rawReviews.length) reviews = normalizeReviews(rawReviews, cfg);
+        } catch (e) {
+          runLog(`评论浏览器抽取中断（${String(e.message).split('\n')[0].slice(0, 80)}），跳过（不影响 SPU/SKU）`);
+        }
+        try {
+          const rawQa = await inBrowserExtractQa(page);
+          if (rawQa.length) qa = normalizeQa(rawQa, cfg);
+        } catch (e) {
+          runLog(`问答浏览器抽取中断（${String(e.message).split('\n')[0].slice(0, 80)}），跳过（不影响 SPU/SKU）`);
+        }
         // ---- SPU/SKU：四层策略（① 平台专属接口解析 → ② 通用接口深搜 → ③ 页面内嵌 JSON/DOM 规格区 → ④ JSON-LD offers） ----
         // ① 平台专属解析（如唯品会 detail/main/v6：data.base=SPU、saleProps=规格维度、products=SKU 价格）
         if (!spu && !skus.length && cfg.detailSpuSku) {
