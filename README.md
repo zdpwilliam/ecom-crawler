@@ -82,11 +82,11 @@ npm run collect -- --platform taobao --type product --query 手机 --strategy mo
 | 唯品会 | ✅ mapi rank+list（登录态） | ✅ detail/main/v6 POST（登录态） | 字段最全（品牌/类目/价格/折扣） |
 | 亚马逊 | ✅ 搜索页 SSR HTML 解析 | ✅ 详情页 twister（dimensionValuesDisplayData） | 海外站走代理；币种 USD；SSR 含价格/评分 |
 | 苏宁易购 | ✅ 搜索页 SSR 商品块解析 + `ds.suning.com/ds/generalForTile` 批量价格接口（匿名可调，**SSR 与详情都不含价格**，价格/店铺名全靠它；对 mdmGroupId/brandId 宽容，商品号是唯一必要参数） | ✅ 详情页 `var sn` + clusterMap（颜色×版本） | 苏宁字段名交叉错乱（clusterMap.color 实为版本 ID、itemCuPartNumber.versionId 才是颜色 ID，dl 命名 colorItemList=版本、versionItemList=颜色）；suning 浏览器回退配了 `urlAccept`+`itemIdPattern` 护栏（防筛选标签被解析成商品、店铺码被当成商品号）；存量坏数据用 `tools/backfill-suning.mjs` 修复 |
-| 淘宝/天猫 | ⚠️ mtop h5 签名（`mtop-api.ts`，**登录态必需**） | 浏览器渲染 | 匿名 ret=request is forbidden；无登录态自动回退浏览器并提示提取 |
+| 淘宝/天猫 | ⚠️ mtop h5 签名（`src/server/adapters/scrape/mtop-api.ts`，**登录态必需**） | 浏览器渲染 | 匿名 ret=request is forbidden；无登录态自动回退浏览器并提示提取 |
 | 闲鱼 | ⚠️ mtop h5 签名（**登录态必需**） | 浏览器渲染 | 匿名触发 SM 滑块（RGV587） |
-| 京东 | ❌ api.m.jd.com 需签名且 functionId 随版本变化 | ✅ `item.m.jd.com` SSR（`jd-api.ts`：`_itemOnly` SKU 变体 + `_itemInfo` 真实价格） | PC 端 item.jd.com 是 JS 壳无数据，必须用移动端；SSR 展示价带掩码（"1??9"）不可用，取 realPriceExt.ORIGINAL.jdprice_amount；搜索走浏览器渲染 + 登录态（响应捕获已加 api.m.jd.com） |
+| 京东 | ❌ api.m.jd.com 需签名且 functionId 随版本变化 | ✅ `item.m.jd.com` SSR（`src/server/adapters/scrape/jd-api.ts`：`_itemOnly` SKU 变体 + `_itemInfo` 真实价格） | PC 端 item.jd.com 是 JS 壳无数据，必须用移动端；SSR 展示价带掩码（"1??9"）不可用，取 realPriceExt.ORIGINAL.jdprice_amount；搜索走浏览器渲染 + 登录态（响应捕获已加 api.m.jd.com） |
 | 拼多多 | ❌ 接口要求 anti-content 签名（匿名 403 error_code=40003） | ❌ 未登录详情页跳登录页 | 走浏览器渲染 + 登录态；浏览器响应捕获已加 proxy/api（登录后可拿结构化商品数据） |
-| 华为商城 | ✅ `openapi.vmall.com/mcp/v1/search/queryPrd` POST（`huawei-api.ts`，**匿名可调**） | ✅ comdetail SSR `__NEXT_DATA__`（base=每 SKU 名称/价格/规格/库存） | 请求需先 GET csrftoken.js 引导会话（CSRF-TOKEN Cookie）+ 同值 `csrfToken` 请求头 + 任意 32hex tid；详情跳转链（302/307）每跳 set-cookie，必须带 Cookie 罐手动跟随 |
+| 华为商城 | ✅ `openapi.vmall.com/mcp/v1/search/queryPrd` POST（`src/server/adapters/scrape/huawei-api.ts`，**匿名可调**） | ✅ comdetail SSR `__NEXT_DATA__`（base=每 SKU 名称/价格/规格/库存） | 请求需先 GET csrftoken.js 引导会话（CSRF-TOKEN Cookie）+ 同值 `csrfToken` 请求头 + 任意 32hex tid；详情跳转链（302/307）每跳 set-cookie，必须带 Cookie 罐手动跟随 |
 | 小红书 | ❌ 搜索页未登录=登录墙（2026-10-26 实测） | ❌ 详情页桌面端强制 App 扫码验证；移动端落 App 墙（详情接口匿名 error_code 602） | **登录态必需**：主路线=浏览器渲染 + 响应捕获（edith/mall.xiaohongshu.com 已入捕获白名单）；Cookie 提取登录页=主站 |
 | 抖音商城 | ❌ 主站搜索未登录=验证码中间页（2026-10-26 实测） | ❌ 抖店商品页未登录弹「页面已下线」离线弹窗 | **登录态必需**：主站 douyin.com 登录后浏览器渲染 + 响应捕获（ec.snssdk.com / jinritemai.com 已入白名单）；注意主站 Cookie 不覆盖 jinritemai 域，详情页以登录态浏览路径为准 |
 | TikTok Shop | ❌ shop.tiktok.com 全入口被 Security Check 滑块拦截（2026-10-26 实测，数据中心 IP 直连） | ❌ 同左 | 可行前提=海外住宅代理（`CRAWL_PROXY`/代理池）+ 登录态 Cookie；官方合规路线=TikTok Shop 开放 API（partner.tiktokshop.com）；币种 USD |
@@ -126,7 +126,7 @@ node tools/cookie-tool.ts list
 
 ```bash
 npm test   # = node scripts/run-all-smoke.cjs：13 套冒烟+单元测试统一入口（含真实网络，约 4~6 分钟）
-node tools/test-cookie-tool.mjs   # 仅登录自动关闭决策单元测试（秒级）
+node tests/test-cookie-tool.mjs   # 仅登录自动关闭决策单元测试（秒级）
 ```
 
 冒烟脚本逐轮沉淀在 `tests/smoke-round*.cjs`；全量入口顺序执行并汇总退出码。登录态提取的「自动关闭」走双闸判定（`tools/cookie-tool.ts`）：cookie 标记命中 + 页面级二次确认（小红书游客态也会种 `web_session`，须确认 `.login-btn` 登录按钮消失才算登录）。
@@ -318,7 +318,7 @@ curl -X POST http://localhost:4311/api/storage/clear \
 
 ## 目录结构
 
-> **TypeScript 工程**：服务端与前端源码均为 `.ts`（Node 22 原生 type-stripping 直接运行，零构建；`src/client/main.tsx` 为 React 18 入口，经 esbuild 打包为 `public/app.js`）。改前端后跑 `npm run build:ui`；类型检查 `npm run typecheck`（双 tsconfig：server/client）。测试/冒烟脚本保持 .cjs/.mjs。
+> **TypeScript 工程**：服务端与前端源码均为 `.ts`（Node 22 原生 type-stripping 直接运行，零构建；`src/client/main.tsx` 为 React 18 入口，经 esbuild 打包为 `public/app.js`）。改前端后跑 `npm run build:ui`；类型检查 `npm run typecheck`（server 与 client 两份 tsconfig）。测试/冒烟脚本保持 .cjs/.mjs。
 
 ```
 src/
