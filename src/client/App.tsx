@@ -42,9 +42,15 @@ export function App() {
     } catch {}
   }, []);
 
-  // 对齐原 renderTable(type, keepPage) 语义：不保页则回第 1 页
+  // 对齐原 renderTable(type, keepPage) 语义：不保页则回第 1 页。
+  // 注意 patch.page 必须最后生效（显式翻页优先于保页/重置逻辑）——
+  // 过去 page 覆盖写在 patch 展开之后，下一页/上一页/跳转的页码被静默丢弃（点按钮无响应）
   const refreshTable = useCallback((keepPage = false, patch: any = {}) => {
-    setTable((t) => ({ ...t, ...patch, page: keepPage ? t.page : 1 }));
+    setTable((t) => {
+      const next = { ...t, ...patch };
+      if (patch.page === undefined && !keepPage) next.page = 1;
+      return next;
+    });
     setTableTick((x) => x + 1);
   }, []);
 

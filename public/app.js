@@ -27657,7 +27657,11 @@ ${sum}
       }
     }, []);
     const refreshTable = (0, import_react9.useCallback)((keepPage = false, patch = {}) => {
-      setTable((t) => ({ ...t, ...patch, page: keepPage ? t.page : 1 }));
+      setTable((t) => {
+        const next = { ...t, ...patch };
+        if (patch.page === void 0 && !keepPage) next.page = 1;
+        return next;
+      });
       setTableTick((x) => x + 1);
     }, []);
     const jumpToProduct = (0, import_react9.useCallback)(

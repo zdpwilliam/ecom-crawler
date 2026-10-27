@@ -347,6 +347,13 @@ const server = http.createServer(async (req, res) => {
       }
       try {
         const d = await adapter.collectDetail(/^https?:\/\//.test(cfgUrl) ? cfgUrl : p0.itemId, {});
+        // 登录墙拦截：页面被重定向到登录页，本次无有效数据——明确指引而非假装「已更新」
+        if (d.loginWall && !d.spu && !(d.skus || []).length && !(d.description || '').length && !(d.images || []).length) {
+          return send(res, 200, {
+            status: 'login-wall',
+            message: '详情页被登录墙拦截（该平台当前无有效登录态）：请到「系统设置 → 平台登录状态」对该平台点「提取登录态」，登录成功后再补抓；已有数据保持不变',
+          });
+        }
         const skuCount = (d.skus || []).length;
         const descLen = (d.description || '').length;
         const imgCount = (d.images || []).length;

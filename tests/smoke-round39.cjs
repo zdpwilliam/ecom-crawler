@@ -124,7 +124,8 @@ function check(name, ok) {
     const rr = await (await fetch('/api/detail-refetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: hit.id, withExtras: false }) })).json();
     return rr.message || rr.error || '';
   });
-  check('补抓消息含描述/图片计数', refetchMsg === null || /描述 \d+ 字/.test(refetchMsg) || /图片 \d+ 张/.test(refetchMsg) || refetchMsg.includes('已更新'));
+  // 登录墙平台（如淘宝游客态）补抓返回 login-wall 明确反馈，属合理行为
+  check('补抓消息含描述/图片计数（或登录墙反馈）', refetchMsg === null || /描述 \d+ 字|图片 \d+ 张|已更新|登录墙/.test(refetchMsg));
 
   check('全程无 JS 报错', errors.length === 0);
   if (errors.length) console.log('JS errors:', errors);

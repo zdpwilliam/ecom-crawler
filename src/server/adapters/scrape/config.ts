@@ -4,7 +4,7 @@
 import { fetchVipProducts, extractVipDetailSpuSku, fetchVipDetailSpuSku } from './vip-api.ts';
 import { fetchAmazonProducts, fetchAmazonDetailSpuSku, parseAmazonDetailHtml, amazonReviewsPageUrl, extractAmazonReviewsDom, fetchAmazonReviews } from './amazon-api.ts';
 import { fetchSuningDetailSpuSku, fetchSuningProducts } from './suning-api.ts';
-import { fetchTaobaoProducts, fetchXianyuProducts } from './mtop-api.ts';
+import { fetchTaobaoProducts, fetchXianyuProducts, fetchTaobaoDetailSpuSku, fetchTaobaoReviews } from './mtop-api.ts';
 import { fetchHuaweiProducts, fetchHuaweiDetailSpuSku } from './huawei-api.ts';
 import { fetchJdDetailSpuSku } from './jd-api.ts';
 
@@ -176,6 +176,12 @@ export const SCRAPE_CONFIG = {
     detailUrl: (itemIdOrUrl) => (/^https?:\/\//.test(itemIdOrUrl) ? itemIdOrUrl : `https://item.taobao.com/item.htm?id=${encodeURIComponent(itemIdOrUrl)}`),
     // mtop 签名直连（登录态必需；无登录态返回空自动回退浏览器渲染）
     directApi: fetchTaobaoProducts,
+    // 详情/评论 mtop 直连（登录态必需）；description/images 由 directSku 透传
+    detailApi: fetchTaobaoDetailSpuSku,
+    fetchReviewsDirect: fetchTaobaoReviews,
+    // 游客访问 item.taobao.com 会被重定向到登录页（title=「登录」，实测 251KB）：
+    // 命中后 collectDetail 提前返回并给出提取登录态的明确指引，不用空 og 数据误导
+    loginWallRe: /<title>[^<]{0,10}登录[^<]{0,10}<\/title>|login\.taobao\.com|passport\.taobao\.com/i,
     product: {
       cardOpen: /<div[^>]*class="[^"]*Card--[^"]*"/i,
       fields: {

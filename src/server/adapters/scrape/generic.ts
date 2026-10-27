@@ -1305,14 +1305,31 @@ export class GenericScrapeAdapter extends BaseAdapter {
           qa: [],
           spu: directSku.spu,
           skus: directSku.skus,
-          description: '',
-          images: [],
+          description: directSku.description || '',
+          images: directSku.images || [],
           props: null,
         };
       }
       throw e;
     }
     const { html, page, browser, apiBodies } = loaded;
+    // 登录墙识别（如淘宝游客访问 item.taobao.com 被重定向到登录页，实测 251KB）：
+    // 此后的 og/meta 兜底只会产出空壳数据误导「已更新」，评论/问答更是无从谈起——
+    // 提前返回并标记 loginWall，让调用方给出「提取登录态」的明确指引
+    if (cfg.loginWallRe && !opts.fixture && cfg.loginWallRe.test(String(html || ''))) {
+      runLog('⚠ 详情页被重定向到登录墙（该平台当前无有效登录态）——请到系统设置页对该平台「提取登录态」后重试');
+      const hasDirect = directSku && ((directSku.spu && Object.keys(directSku.spu).length) || directSku.skus.length);
+      return {
+        reviews: [],
+        qa: [],
+        spu: hasDirect ? directSku.spu : null,
+        skus: hasDirect ? directSku.skus : [],
+        description: (directSku && directSku.description) || '',
+        images: (directSku && directSku.images) || [],
+        props: null,
+        loginWall: true,
+      };
+    }
     // 给浏览器响应捕获留 0.6s 收尾：详情页主接口（如唯品会 detail/main/v6）的响应体
     // 可能还在 text() 等待中，直接解析会漏掉
     if (Array.isArray(apiBodies) && apiBodies.length) {
@@ -1547,6 +1564,14 @@ export class GenericScrapeAdapter extends BaseAdapter {
       if (!qa.length && cfg.qa) qa = parseQa(html, cfg);
       // 无浏览器路径（fetch/fixture）：HTML 正则解析（JSON-LD → meta）
       if (!page) detailInfo = extractDetailInfoFromHtml(html);
+      // 直连接口透传的描述/图片（如淘宝 getdetail descInfo/item.images——详情页描述是
+      // 懒加载 iframe，DOM 抽取常常拿不到）：页面未给出时兜底
+      if (directSku) {
+        if (directSku.description && !(detailInfo.description || '').length) detailInfo.description = directSku.description;
+        if (directSku.images && directSku.images.length && detailInfo.images.length < 3) {
+          for (const im of directSku.images) if (!detailInfo.images.includes(im)) detailInfo.images.push(im);
+        }
+      }
       // JSON-LD offers 多规格变体兜底（服务端渲染站点）
       if (!skus.length) {
         const ld = extractJsonLd(html).filter((n) => n['@type'] === 'Product');

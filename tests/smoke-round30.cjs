@@ -30,6 +30,29 @@ const check = (name, ok) => {
   //  数据驱动：找一条 specs.spu+specs.skus 的记录；库被清理后无命中则现场对一条 VIP 记录补抓（验证详情补抓链路）
   await page.click('.nav-item[data-page="data"]');
   await page.waitForTimeout(800);
+  // 5a. 翻页回归：下一页/上一页/跳转的页码必须真实生效（曾因 refreshTable 的 page 覆盖
+  //  写在 patch 展开之后被静默丢弃，表现为「点下一页无响应」）
+  const canPage = await page.evaluate(() => {
+    const b = document.querySelector('#pgNext');
+    return !!b && !b.disabled;
+  });
+  if (canPage) {
+    const pgInfo = () => page.locator('#pgInfo').innerText();
+    await page.click('#pgNext');
+    await page.waitForTimeout(600);
+    check('下一页翻页生效（页码 +1）', /第 2 /.test(await pgInfo()));
+    await page.click('#pgPrev');
+    await page.waitForTimeout(600);
+    check('上一页翻回第 1 页', /第 1 /.test(await pgInfo()));
+    await page.fill('#pgJump', '2');
+    await page.click('#pgGo');
+    await page.waitForTimeout(600);
+    check('跳转到第 2 页生效', /第 2 /.test(await pgInfo()));
+    await page.click('#pgPrev');
+    await page.waitForTimeout(600);
+  } else {
+    check('（库中数据不足 2 页，跳过翻页断言）', true);
+  }
   let spuTarget = await page.evaluate(async () => {
     const r = await (await fetch('/api/data?type=product&pageSize=100')).json();
     return (r.rows || []).find((x) => x.specs && x.specs.spu && x.specs.skus && x.specs.skus.length) || null;

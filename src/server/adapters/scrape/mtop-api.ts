@@ -143,6 +143,140 @@ export async function fetchTaobaoProducts(opts: { query?: string; limit?: number
   return rows;
 }
 
+/** 淘宝详情（登录态必需）：h5 详情接口 mtop.taobao.detail.getdetail 6.0。
+ *  返回 data：item（标题/图片）、skuBase（规格维度+SKU 列表）、skuCore（SKU 价格）、
+ *  props（参数表）、descInfo（详情描述 HTML，懒加载内容的接口侧来源）。
+ *  注意：description/images 直接由 collectDetail 通过 directSku 透传（浏览器登录墙时唯一数据源）。 */
+export async function fetchTaobaoDetailSpuSku(opts: { itemId?: string; url?: string; log?: (m?: string) => void } = {}) {
+  const { itemId, log = (_m?: string) => {} } = opts;
+  const cookieStr = loadCookies('taobao', log);
+  if (!cookieStr) {
+    log('淘宝详情接口需登录态（无 Cookie），跳过直连');
+    return { spu: null, skus: [], description: '', images: [] };
+  }
+  if (isStopped()) throw new Error('已手动停止采集');
+  const sess = acquireSession('taobao', true);
+  const data = await mtopRequest({
+    host: 'h5api.m.taobao.com',
+    api: 'mtop.taobao.detail.getdetail',
+    version: '6.0',
+    data: { itemNumId: String(itemId) },
+    cookieStr,
+    log,
+    proxy: sess.proxy,
+    userAgent: sess.userAgent || UA,
+  });
+  if (!data) return { spu: null, skus: [], description: '', images: [] };
+
+  const item = data.item || {};
+  // 价格多源：item.price > priceInfo > skuCore 当前 SKU
+  let price = 0;
+  const priceText =
+    String(item?.price || '') ||
+    String(data?.price?.price?.priceText || '') ||
+    String(data?.skuCore?.sku2info?.[String(itemId)]?.price?.priceText || '');
+  const pm = priceText.match(/([\d.]+)/);
+  if (pm) price = parseFloat(pm[1]) || 0;
+
+  const spu = item.title
+    ? {
+        spuId: String(itemId),
+        title: String(item.title).replace(/<[^>]*>/g, ''),
+        brand: String(data?.brand?.name || item?.brand || ''),
+        category: String(data?.category?.name || data?.item?.categoryName || ''),
+        price,
+        image: String((item.images || [])[0] || ''),
+      }
+    : null;
+
+  // SKU：skuBase.skus（propPath=pid;vid;...）× skuBase.props（维度名/值）+ skuCore 价格
+  const skus = [];
+  const skuBase = data.skuBase || {};
+  const propIndex = {};
+  for (const p of skuBase.props || []) {
+    for (const v of p.values || []) propIndex[`${p.pid}:${v.vid}`] = `${p.name || p.pid}:${v.name || v.vid}`;
+  }
+  const sku2info = data.skuCore?.sku2info || {};
+  for (const s of skuBase.skus || []) {
+    const opts2 = String(s.propPath || '')
+      .split(';')
+      .filter(Boolean)
+      .map((kv) => propIndex[kv] || kv);
+    const info = sku2info[String(s.skuId)] || {};
+    skus.push({
+      skuId: String(s.skuId || ''),
+      name: opts2.join(' / '),
+      options: Object.fromEntries(opts2.map((o) => o.split(':').map((x) => x.trim()))),
+      price: parseFloat(String(info?.price?.priceText || '').replace(/[^\d.]/g, '')) || 0,
+    });
+    if (skus.length >= 60) break;
+  }
+  if (skus.length) log(`淘宝详情接口：SPU ✓，SKU ${skus.length} 条（skuBase）`);
+  else log('淘宝详情接口：无 SKU 明细（单规格或接口未返回 skuBase）');
+
+  // 描述（懒加载内容的接口侧来源）与图片集
+  const description = String(data.descInfo?.showDesc || data.item?.descShort || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 4000);
+  const images = (item.images || []).map((u) => (/^https?:/.test(u) ? u : 'https:' + u)).slice(0, 30);
+  return { spu, skus, description, images };
+}
+
+/** 淘宝评论（登录态必需）：h5 评价接口 mtop.taobao.rate.detaillist.get。
+ *  响应结构随版本变化：宽松深搜「带 content+date 的对象数组」作为评论列表。 */
+export async function fetchTaobaoReviews(opts: { itemId?: string; limit?: number; log?: (m?: string) => void } = {}) {
+  const { itemId, limit = 20, log = (_m?: string) => {} } = opts;
+  const cookieStr = loadCookies('taobao', log);
+  if (!cookieStr) {
+    log('淘宝评论接口需登录态（评价数据游客不可见），跳过直连');
+    return [];
+  }
+  if (isStopped()) throw new Error('已手动停止采集');
+  const sess = acquireSession('taobao', true);
+  const data = await mtopRequest({
+    host: 'h5api.m.taobao.com',
+    api: 'mtop.taobao.rate.detaillist.get',
+    version: '6.0',
+    data: { auctionNumId: String(itemId), currentPage: 1, pageSize: limit, rateType: '', orderType: 'feedbackdate', folded: '0' },
+    cookieStr,
+    log,
+    proxy: sess.proxy,
+    userAgent: sess.userAgent || UA,
+  });
+  if (!data) return [];
+  // 宽松深搜：找含 content 且带时间/星级字段的对象数组（rateDetail.rateList 或同级变体）
+  const found = [];
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || found.length >= limit) return;
+    if (Array.isArray(node)) {
+      for (const x of node) walk(x);
+      return;
+    }
+    if (typeof node.content === 'string' && node.content.length > 2 && (node.date || node.feedbackDate || node.rateDate)) {
+      found.push(node);
+      return;
+    }
+    for (const v of Object.values(node)) walk(v);
+  };
+  walk(data);
+  if (!found.length) {
+    log('淘宝评论接口未解析到评论（可能该商品无评价，或接口结构变化）');
+    return [];
+  }
+  log(`淘宝评论接口解析出 ${found.length} 条评论`);
+  return found.slice(0, limit).map((r) => {
+    const star = parseFloat(String(r.rateStar || r.star || ''));
+    return {
+      rating: isNaN(star) ? 5 : Math.min(5, Math.max(1, Math.round(star / 20 || star))),
+      content: String(r.content || '').replace(/\s+/g, ' ').trim().slice(0, 800),
+      author: String(r.user?.nick || r.displayUserNick || r.userNick || ''),
+      date: String(r.date || r.feedbackDate || r.rateDate || ''),
+    };
+  });
+}
+
 /** 闲鱼搜索（登录态必需）：PC 搜索走 idlemtopsearch.pc.search。 */
 export async function fetchXianyuProducts(opts: { query?: string; limit?: number; log?: (m?: string) => void } = {}) {
   const { query, limit = 20, log = (_m?: string) => {} } = opts;
