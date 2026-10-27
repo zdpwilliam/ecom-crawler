@@ -5,16 +5,19 @@
   "type": "module",
   "description": "可扩展的电商平台数据采集与展示平台：官方 API 优先 + 可插拔爬虫回退 + SQLite 存储 + 代理池 + 定时采集 + CSV/JSON 导出",
   "scripts": {
-    "start": "node --experimental-sqlite server/index.js",
-    "collect": "node --experimental-sqlite scripts/run-collect.js",
-    "scheduler": "node --experimental-sqlite scripts/scheduler.js",
-    "export": "node --experimental-sqlite scripts/export-data.js",
-    "cookie": "node tools/cookie-tool.js",
-    "postinstall": "node tools/ensure-browser.js",
-    "test": "node scripts/run-all-smoke.cjs"
+    "start": "node --experimental-sqlite server/index.ts",
+    "collect": "node --experimental-sqlite scripts/run-collect.ts",
+    "scheduler": "node --experimental-sqlite scripts/scheduler.ts",
+    "export": "node --experimental-sqlite scripts/export-data.ts",
+    "cookie": "node tools/cookie-tool.ts",
+    "postinstall": "node tools/ensure-browser.ts",
+    "test": "node scripts/run-all-smoke.cjs",
+    "typecheck": "tsc --noEmit",
+    "build:ui": "esbuild src/ui/app.ts --bundle --format=iife --target=es2022 --outfile=public/app.js",
+    "pretest": "npm run build:ui"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   },
   "dependencies": {
     "fetch-socks": "^1.3.3",
@@ -23,5 +26,10 @@
   },
   "optionalDependencies": {
     "mongodb": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "5.9"
   }
 }

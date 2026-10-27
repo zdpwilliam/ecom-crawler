@@ -4,8 +4,8 @@
 //
 // 用法：node tools/backfill-fields.mjs [--platform vip]
 // 可重复执行：只处理仍有缺失或品牌为 DOM 采集值的行。
-import { loadStore } from '../server/db.js';
-import { fetchVipDetailSpuSku } from '../server/adapters/scrape/vip-api.js';
+import { loadStore } from '../server/db.ts';
+import { fetchVipDetailSpuSku } from '../server/adapters/scrape/vip-api.ts';
 
 const db = loadStore();
 const log = (m) => console.log(`[backfill] ${m}`);

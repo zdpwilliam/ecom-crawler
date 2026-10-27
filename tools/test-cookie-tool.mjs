@@ -1,7 +1,7 @@
 // cookie-tool 登录自动关闭决策的回归测试（Round 41 bug：小红书游客态也种 web_session → 弹窗即误判关闭）
 // 运行：node tools/test-cookie-tool.mjs
 // 决策矩阵：cookie marker 命中 + 页面级二次确认（游客态 .login-btn 存在 → 不自动关）
-import { shouldAutoClose, LOGIN_MARKERS, LOGIN_CONFIRM } from './cookie-tool.js';
+import { shouldAutoClose, LOGIN_MARKERS, LOGIN_CONFIRM } from './cookie-tool.ts';
 
 const results = [];
 function check(name, ok) {

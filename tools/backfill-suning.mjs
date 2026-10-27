@@ -8,7 +8,7 @@
 //                       brand/category（走 netThrottle 节流，189 条约 5~8 分钟）。
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { fetchSuningDsPrices, fetchSuningDetailSpuSku } from '../server/adapters/scrape/suning-api.js';
+import { fetchSuningDsPrices, fetchSuningDetailSpuSku } from '../server/adapters/scrape/suning-api.ts';
 
 const withBrand = process.argv.includes('--brand');
 const db = new DatabaseSync(fileURLToPath(new URL('../data/ecom.db', import.meta.url)));

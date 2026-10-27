@@ -1,7 +1,7 @@
 // OpenCLI 桥接适配器单元测试（离线，秒级）：
 // 验证 opencli JSON 输出的防御式归一化（深度找数组 + 字段别名映射）与 JSON 截断容错。
 import assert from 'node:assert';
-import { findRecordArray, toProduct, toReview, runOpencli } from '../server/adapters/official/opencli-adapter.js';
+import { findRecordArray, toProduct, toReview, runOpencli } from '../server/adapters/official/opencli-adapter.ts';
 
 let pass = 0;
 const check = (name, cond) => {
