@@ -101,10 +101,10 @@ export const TECH_MATRIX: Record<string, { name: string; search: string; detail:
   },
   amazon: {
     name: '亚马逊',
-    search: '搜索页 SSR HTML 直连解析（海外站走代理）',
-    detail: '详情页 SSR 直连（标题/价格/图 + twister 变体）',
+    search: '搜索页 SSR HTML 直连解析（海外站走代理，带登录 Cookie + 退避重试）',
+    detail: '详情页 SSR 直连（标题/价格/品牌 + twister 变体）；直连被拦截时用浏览器加载的 HTML 跑同一解析器',
     needLogin: '不需要',
-    best: 'SSR 直连最稳最快（服务端渲染完整 HTML，无验证码时无需浏览器）',
+    best: '浏览器渲染最稳（机器人拦截对非浏览器 TLS 最狠）；评论须走 /product-reviews 评论列表页（详情页 SSR 不渲染评论，登录也一样）',
   },
   suning: {
     name: '苏宁易购',

@@ -1,6 +1,10 @@
-// 亚马逊直连通道：搜索页 SSR HTML 解析 + 详情页 twister 数据提 SPU/SKU。
+// 亚马逊直连通道：搜索页 SSR HTML 解析 + 详情页 twister 数据提 SPU/SKU + 评论列表页提取。
 // 亚马逊搜索/详情页均为服务端渲染（1.4MB+ 完整 HTML，无验证码时字段齐全），
 // 无需浏览器渲染；亚马逊是海外站，请求必须走代理（VPN）。
+// 实测（2026-10-27）：无 Cookie 的裸请求被亚马逊激进重置（ECONNRESET/机器人页），
+// 带 data/cookies/amazon.json 登录 Cookie（含 session-id）后成功率显著提高。
+import fs from 'node:fs';
+import path from 'node:path';
 import { pickProxy } from '../../proxy-pool.ts';
 import { impersonatedFetch } from '../../http-client.ts';
 import { mapApiProducts } from './api-parse.ts';
@@ -10,6 +14,24 @@ import { netThrottle } from './config.ts';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const SEARCH_URL = 'https://www.amazon.com/s?k=';
 
+// 登录 Cookie 头（缓存 5 分钟：文件只在用户重新提取登录态时变更）
+let _cookieCache: { at: number; header: string } | null = null;
+function amazonCookieHeader(): string {
+  if (_cookieCache && Date.now() - _cookieCache.at < 5 * 60_000) return _cookieCache.header;
+  let header = '';
+  try {
+    const fp = path.join(process.cwd(), 'data', 'cookies', 'amazon.json');
+    if (fs.existsSync(fp)) {
+      const arr = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      if (Array.isArray(arr)) header = arr.map((c) => `${c.name}=${c.value}`).join('; ');
+    }
+  } catch {
+    /* 读取失败按无 Cookie 处理 */
+  }
+  _cookieCache = { at: Date.now(), header };
+  return header;
+}
+
 async function aget(url, tries = 3, log = (_m?: string) => {}) {
   let lastErr;
   for (let i = 1; i <= tries; i++) {
@@ -17,21 +39,31 @@ async function aget(url, tries = 3, log = (_m?: string) => {}) {
       if (isStopped()) throw new Error('已手动停止采集');
       await netThrottle(log); // 全局节流：跨通道共用计时
       const proxy = pickProxy();
-      log(`亚马逊请求（第${i}/${tries}次）代理=${proxy || '直连'}（TLS 伪装）`);
+      const cookie = amazonCookieHeader();
+      log(`亚马逊请求（第${i}/${tries}次）代理=${proxy || '直连'}（TLS 伪装${cookie ? ' + 登录Cookie' : ''}）`);
       const res = await impersonatedFetch({
         url,
-        headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html,application/xhtml+xml' },
+        headers: {
+          'User-Agent': UA,
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'text/html,application/xhtml+xml',
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
         timeout: 45000,
         proxy,
       });
       const html = await res.text();
       if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
-      if (/captcha|api-services-support@amazon/i.test(html.slice(0, 4000))) throw new Error('亚马逊验证码拦截（换代理/降频重试）');
+      // 机器人页/验证码页同样是 200 但只有几 KB：按内容特征识别后走重试
+      if (/captcha|api-services-support@amazon|automated access|Enter the characters you see|sorry, we just need to make sure/i.test(html.slice(0, 6000)) || (html.length < 20_000 && /<title[^>]*>\s*Amazon\.com\s*<\/title>/i.test(html))) {
+        throw new Error('亚马逊验证码/机器人页拦截（换代理/降频重试）');
+      }
       return html;
     } catch (e) {
       lastErr = String(e.cause?.code || e.message).slice(0, 90);
       log(`  请求失败: ${lastErr}`);
-      // 重试间隔由下一次循环开头的 netThrottle 按设置档位保证
+      // 退避后再试：连续立刻重试会被同一批连接路径继续重置
+      if (i < tries) await new Promise((r) => setTimeout(r, 1000 * i));
     }
   }
   throw new Error(`亚马逊请求失败: ${lastErr}`);
@@ -126,18 +158,17 @@ export async function fetchAmazonProducts(opts: { query?: string; limit?: number
 }
 
 /**
- * 亚马逊详情页直连：SPU（标题/品牌/价格/图）+ twister 变体数据。
+ * 亚马逊详情页 SSR HTML 解析（纯函数，供直连与浏览器通道共用）：
+ * SPU（标题/品牌/价格/图）+ twister 变体数据。
  * dimensionValuesDisplayData: { ASIN: [规格值...] }；variationDisplayLabels: { 维度key: 显示名 }
  */
-export async function fetchAmazonDetailSpuSku(opts: { itemId?: string; log?: (m?: string) => void } = {}) {
-  const { itemId, log = (_m?: string) => {} } = opts;
-  const html = await aget(`https://www.amazon.com/dp/${encodeURIComponent(itemId)}`, 3, log);
-  if (isStopped()) throw new Error('已手动停止采集');
+export function parseAmazonDetailHtml(html: string, itemId: string, log = (_m?: string) => {}) {
   const title = (html.match(/<span id="productTitle"[^>]*>\s*([^<]{5,300}?)\s*</) || [])[1] || '';
-  const brandRaw = (html.match(/<a[^>]*id="bylineInfo"[^>]*>([^<]{1,80})</) || [])[1] || '';
+  const brandRaw = (html.match(/<a[^>]*id="bylineInfo"[^>]*>([^<]{1,80})</) || [])[1] || (html.match(/"brand"\s*:\s*"([^"]{1,60})"/) || [])[1] || '';
   const brand = brandRaw.replace(/^(Visit the|Brand:)\s*/i, '').replace(/\s*Store$/i, '').trim();
-  const price = parseFloat((html.match(/"priceAmount":([\d.]+)/) || html.match(/<span class="a-offscreen">([^<]+)</) || [])[1]?.replace(/[^0-9.]/g, '') || '0') || 0;
-  const image = (html.match(/<meta property="og:image" content="([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/) || [])[1] || '';
+  const price =
+    parseFloat((html.match(/"priceAmount":([\d.]+)/) || html.match(/"price"\s*:\s*"?([\d.]+)"?/) || html.match(/<span class="a-offscreen">([^<]+)</) || [])[1]?.replace(/[^0-9.]/g, '') || '0') || 0;
+  const image = (html.match(/<meta property="og:image" content="([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/) || html.match(/"hiRes":"([^"]+)"/) || [])[1] || '';
 
   const spu = {
     spuId: String(itemId),
@@ -173,4 +204,66 @@ export async function fetchAmazonDetailSpuSku(opts: { itemId?: string; log?: (m?
     log('详情页无 twister 变体数据（单规格商品）');
   }
   return { spu: title ? spu : null, skus };
+}
+
+/**
+ * 亚马逊详情页直连：SSR HTML 跑 parseAmazonDetailHtml。
+ */
+export async function fetchAmazonDetailSpuSku(opts: { itemId?: string; log?: (m?: string) => void } = {}) {
+  const { itemId, log = (_m?: string) => {} } = opts;
+  const html = await aget(`https://www.amazon.com/dp/${encodeURIComponent(itemId)}`, 3, log);
+  if (isStopped()) throw new Error('已手动停止采集');
+  return parseAmazonDetailHtml(html, itemId, log);
+}
+
+/**
+ * 亚马逊评论列表页直连 + DOM 提取器（两段式）：
+ * 详情页 SSR 不渲染评论（登录后也只有 Top reviews 摘要甚至为空），评论必须走
+ * /product-reviews/<ASIN> 列表页。两段式是为了配合通用 collectDetail：
+ * reviewsPage 构造 URL（浏览器导航），extractReviewsDom 在已导航的页面里提取。
+ */
+export function amazonReviewsPageUrl(itemId: string) {
+  return `https://www.amazon.com/product-reviews/${encodeURIComponent(itemId)}?pageNumber=1`;
+}
+
+export async function extractAmazonReviewsDom(page: any, limit = 30) {
+  return page.evaluate((max: number) => {
+    const out: any[] = [];
+    for (const card of document.querySelectorAll('[data-hook="review"]')) {
+      const q = (sel: string) => (card.querySelector(sel)?.textContent || '').replace(/\s+/g, ' ').trim();
+      const bodyEl = card.querySelector('[data-hook="review-body"]');
+      const content = ((bodyEl as HTMLElement)?.innerText || bodyEl?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!content || content.length < 4) continue;
+      const rm = q('.a-icon-alt').match(/([\d.]+) out of 5/);
+      out.push({
+        rating: rm ? Math.min(5, Math.max(1, Math.round(parseFloat(rm[1])))) : 5,
+        content: content.slice(0, 800),
+        author: q('.a-profile-name') || '',
+        date: q('[data-hook="review-date"]').slice(0, 60),
+      });
+      if (out.length >= max) break;
+    }
+    return out;
+  }, limit);
+}
+
+/** 评论列表页直连（SSR）：与浏览器导航二选一的直连形态。 */
+export async function fetchAmazonReviews(opts: { itemId?: string; limit?: number; log?: (m?: string) => void } = {}) {
+  const { itemId, limit = 30, log = (_m?: string) => {} } = opts;
+  const html = await aget(amazonReviewsPageUrl(String(itemId)), 2, log);
+  if (isStopped()) throw new Error('已手动停止采集');
+  // 复用轻量块解析：data-hook="review" 卡片内抽 rating/body/author/date
+  const out: any[] = [];
+  for (const chunk of html.split(/<div[^>]+data-hook="review"/).slice(1)) {
+    const rm = (chunk.match(/class="a-icon-alt">([\d.]+) out of 5/) || [])[1] || '';
+    const bodyM = chunk.match(/data-hook="review-body"[\s\S]{0,200}?>([\s\S]*?)<\/div>/);
+    const content = bodyM ? bodyM[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    if (!content || content.length < 4) continue;
+    const author = (chunk.match(/class="a-profile-name">([^<]{1,60})</) || [])[1] || '';
+    const date = (chunk.match(/data-hook="review-date">([^<]{1,60})</) || [])[1] || '';
+    out.push({ rating: rm ? Math.min(5, Math.max(1, Math.round(parseFloat(rm)))) : 5, content: content.slice(0, 800), author, date });
+    if (out.length >= limit) break;
+  }
+  log(`评论列表页解析：${out.length} 条评论`);
+  return out;
 }

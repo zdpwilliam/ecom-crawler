@@ -2,7 +2,7 @@
 // 说明：电商站点 HTML 结构频繁变动，以下为「起始模板」，真实抓取前请核对当前页面。
 // 离线验证专用 `demo` 配置与 data/fixtures/*.html 严格对齐，保证解析内核可端到端验证。
 import { fetchVipProducts, extractVipDetailSpuSku, fetchVipDetailSpuSku } from './vip-api.ts';
-import { fetchAmazonProducts, fetchAmazonDetailSpuSku } from './amazon-api.ts';
+import { fetchAmazonProducts, fetchAmazonDetailSpuSku, parseAmazonDetailHtml, amazonReviewsPageUrl, extractAmazonReviewsDom, fetchAmazonReviews } from './amazon-api.ts';
 import { fetchSuningDetailSpuSku, fetchSuningProducts } from './suning-api.ts';
 import { fetchTaobaoProducts, fetchXianyuProducts } from './mtop-api.ts';
 import { fetchHuaweiProducts, fetchHuaweiDetailSpuSku } from './huawei-api.ts';
@@ -225,10 +225,19 @@ export const SCRAPE_CONFIG = {
     directApi: fetchAmazonProducts,
     detailApi: fetchAmazonDetailSpuSku,
     detailSpuSku: (apiBodies) => ({ spu: null, skus: [], propGroups: [] }), // 直连已覆盖；浏览器捕获走通用深搜
+    // 直连被重置/拦截时，用浏览器加载的同一份 SSR HTML 跑同一解析器（twister/价格/品牌）
+    detailHtmlParse: parseAmazonDetailHtml,
+    // 详情页 SSR 不渲染评论（登录后也只有 Top reviews 摘要）→ 通用流程导航到评论列表页提取
+    reviewsPage: amazonReviewsPageUrl,
+    extractReviewsDom: (page) => extractAmazonReviewsDom(page, 30),
+    // 评论列表页直连（SSR HTML 正则解析；浏览器导航被墙时的独立路径）
+    fetchReviewsDirect: fetchAmazonReviews,
     // 详情页标准结构 amazon.com/dp/<ASIN>（10 位字母数字）；传完整 URL 时直接用
     detailUrl: (itemIdOrUrl) => (/^https?:\/\//.test(itemIdOrUrl) ? itemIdOrUrl : `https://www.amazon.com/dp/${encodeURIComponent(itemIdOrUrl)}`),
     currency: 'USD',
-    product: { cardOpen: /<div[^>]*class="[^"]*s-result-item/i, fields: { title: { tag: 'span', cls: 'a-text-normal' }, price: { tag: 'span', cls: 'a-price' }, shop: { tag: 'span', cls: 'a-size-base' }, url: { tag: 'a', cls: 'a-link-normal', attr: 'href' } } },
+    // 浏览器兜底解析护栏：只认 /dp/<ASIN> 详情链接（搜索页推荐位/广告位同块里的
+    // ISBN-10 纯数字链接曾被当成 itemId，14 条同号垃圾数据入库教训）
+    product: { cardOpen: /<div[^>]*class="[^"]*s-result-item/i, urlAccept: /\/dp\/[A-Z0-9]{10}/i, itemIdPattern: /\/dp\/([A-Z0-9]{10})/i, fields: { title: { tag: 'span', cls: 'a-text-normal' }, price: { tag: 'span', cls: 'a-price' }, shop: { tag: 'span', cls: 'a-size-base' }, url: { tag: 'a', cls: 'a-link-normal', attr: 'href' } } },
     review: { cardOpen: /<div[^>]*class="[^"]*review/i, fields: { rating: { tag: 'span', cls: 'a-icon-alt' }, content: { tag: 'span', cls: 'review-text' }, author: { tag: 'span', cls: 'a-profile-name' } } },
   },
   vip: {

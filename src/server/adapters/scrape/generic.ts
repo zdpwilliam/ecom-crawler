@@ -105,6 +105,21 @@ function extractJsonLd(html) {
 // ---------- 详情页扩展信息（纯 HTML 路径）：JSON-LD Product → meta/og 正则解析 ----------
 // 浏览器路径（collectDetail 内 page.evaluate）是本逻辑的超集：多出 DOM 图片集/规格参数表/描述兜底。
 // fixture 离线验证与纯 SSR 站点走本函数。
+/** 各平台详情页 URL 提取商品 id（顺序敏感）：
+ *  vip detail-<brandId>-<itemId>.html → 亚马逊 /dp/<ASIN> → 苏宁 product.suning.com/<shopCode>/<partNum>.html
+ *  → 京东 item(.m).jd.com/<sku>.html → 华为 vmall.com/product/<prdId>.html → 兜底 10+ 位数字 */
+function detailItemIdOf(u: string): string {
+  return (
+    (u.match(/detail-\d+-(\d+)\.html/) || [])[1] ||
+    (u.match(/\/dp\/([A-Z0-9]{10})/i) || [])[1] ||
+    (u.match(/product\.suning\.com\/\d+\/(\d+)\.html/) || [])[1] ||
+    (u.match(/item\.(?:m\.)?jd\.com\/(?:product\/)?(\d{10,})\.html/) || [])[1] ||
+    (u.match(/vmall\.com\/product\/(\d{8,})\.html/) || [])[1] ||
+    (u.match(/(\d{10,})/) || [])[1] ||
+    ''
+  );
+}
+
 function extractDetailInfoFromHtml(html) {
   const out = { description: '', images: [], props: null };
   const abs = (u) => {
@@ -313,6 +328,52 @@ function parseReviews(html, cfg) {
   }));
 }
 
+/** 评论列表页浏览器导航提取（亚马逊等详情页不渲染评论的平台兜底）。
+ *  domcontentloaded 可能早于评论卡渲染（541KB 页面实测），需 waitForSelector 等卡片出现；
+ *  0 条时区分「真没评论」与「被机器人墙/登录墙拦截」，最多重试一次。 */
+async function reviewsViaListPage(page: any, cfg: any, itemId: string, log: (m: string) => void) {
+  const rvUrl = cfg.reviewsPage(String(itemId));
+  log(`评论列表页提取（浏览器导航）：${rvUrl.slice(0, 90)}`);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await page.goto(rvUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      try {
+        await page.waitForSelector('[data-hook="review"]', { timeout: 10000 });
+      } catch {
+        /* 卡片选择器等不到也照样抽取（平台不同钩子不同） */
+      }
+      await page.waitForTimeout(1500);
+      const raw = await (cfg.extractReviewsDom ? cfg.extractReviewsDom(page) : inBrowserExtractReviews(page));
+      if (raw.length) {
+        log(`评论列表页提取：${raw.length} 条评论`);
+        return normalizeReviews(raw, cfg);
+      }
+      if (attempt < 2) {
+        log(`评论列表页第 ${attempt} 次未取到评论卡，重试…`);
+        await page.waitForTimeout(2000);
+        continue;
+      }
+      const info = await page
+        .evaluate(() => {
+          const html = document.documentElement.outerHTML;
+          return {
+            kb: Math.round(html.length / 1024),
+            hooks: document.querySelectorAll('[data-hook="review"]').length,
+            bot: /Enter the characters|automated access|api-services-support/i.test(html),
+            body: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 120),
+          };
+        })
+        .catch(() => null);
+      if (info) {
+        log(`评论列表页 0 条（页面 ${info.kb}KB，评论卡 ${info.hooks} 张，${info.bot ? '被机器人墙拦截' : `页面提示：${info.body.slice(0, 80)}`}）`);
+      }
+    } catch (e) {
+      log(`评论列表页提取失败（${String(e.message).split('\n')[0].slice(0, 80)}）${attempt < 2 ? '，重试' : '，跳过'}`);
+    }
+  }
+  return [];
+}
+
 function parseQa(html, cfg) {
   const key = cfg.qa ? 'qa' : null;
   if (!key) return [];
@@ -475,6 +536,10 @@ function inBrowserExtractReviews(page) {
     );
     for (const box of boxes) {
       const txt = (box.innerText || '').replace(/\s+/g, ' ').trim();
+      // 内容护栏：跳过 UI 操作文案（"我要写评论/搜索此页面/有 0 条客户评论"等被
+      // class~="review" 的容器圈进来，亚马逊本地化详情页实测）；真评论正文 ≥15 字
+      if (txt.length < 15) continue;
+      if (/条客户评论|我要写评论|写评论|查看所有评论|显示更多评论|搜索此页面|Top reviews|Customer reviews|查看更多|登录|Help Center/i.test(txt.slice(0, 60))) continue;
       const m = txt.match(/(?:(\d(?:\.\d)?)\s*星)|(?:评分\s*(\d))/);
       const rating = m ? Math.min(5, Math.max(1, Math.round(parseFloat(m[1] || m[2])))) : 5;
       const key = txt.slice(0, 40);
@@ -501,7 +566,9 @@ function inBrowserExtractQa(page) {
         .filter((t) => t.length > 2);
       const q = txts[0] || (box.innerText || '').replace(/\s+/g, ' ').trim();
       const a = txts[1] || '';
-      if (!q) continue;
+      // 内容护栏：真问题 ≥8 字且不是页面操作文案（"搜索此页面"等被 class~="ask/question"
+      // 的容器圈进来，亚马逊本地化详情页实测）
+      if (!q || q.length < 8 || /搜索此页面|我要提问|写问答|登录|客服/i.test(q.slice(0, 40))) continue;
       const key = q.slice(0, 40);
       if (seen.has(key)) continue;
       seen.add(key);
@@ -579,18 +646,22 @@ function normalizeProducts(raw, cfg) {
 }
 
 function normalizeReviews(raw, cfg, itemId = '', productTitle = '') {
-  return raw.map((r, i) => ({
-    id: `scrape-${cfg.name}-r-${i}-${Date.now()}`,
-    platform: cfg.name,
-    itemId,
-    productTitle,
-    rating: Math.min(5, Math.max(1, Number(r.rating) || 5)),
-    content: r.content || '',
-    authorMasked: `用***${i}`,
-    tags: Number(r.rating) >= 4 ? ['好评'] : [],
-    createdAt: new Date().toISOString(),
-    collectedAt: new Date().toISOString(),
-  }));
+  return raw.map((r, i) => {
+    // 平台原始数据可能带作者/评论日期（如亚马逊 "… on October 3, 2024"）：能解析则保留
+    const dm = String(r.date || '').match(/([A-Z][a-z]+ \d{1,2}, \d{4})/);
+    return {
+      id: `scrape-${cfg.name}-r-${i}-${Date.now()}`,
+      platform: cfg.name,
+      itemId,
+      productTitle,
+      rating: Math.min(5, Math.max(1, Number(r.rating) || 5)),
+      content: r.content || '',
+      authorMasked: r.author ? `${String(r.author).slice(0, 1)}***` : `用***${i}`,
+      tags: Number(r.rating) >= 4 ? ['好评'] : [],
+      createdAt: dm && !isNaN(Date.parse(dm[1])) ? new Date(dm[1]).toISOString() : new Date().toISOString(),
+      collectedAt: new Date().toISOString(),
+    };
+  });
 }
 
 function normalizeQa(raw, cfg, itemId = '', productTitle = '') {
@@ -1210,17 +1281,7 @@ export class GenericScrapeAdapter extends BaseAdapter {
     let directSku = null;
     if (cfg.detailApi && !opts.fixture) {
       const u = String(url);
-      // 各平台详情 id 提取（顺序敏感）：
-      //  vip detail-<brandId>-<itemId>.html → 亚马逊 /dp/<ASIN> → 苏宁 product.suning.com/<shopCode>/<partNum>.html
-      //  → 京东 item(.m).jd.com/<sku>.html → 华为 vmall.com/product/<prdId>.html → 兜底 10+ 位数字
-      const itemId =
-        (u.match(/detail-\d+-(\d+)\.html/) || [])[1] ||
-        (u.match(/\/dp\/([A-Z0-9]{10})/i) || [])[1] ||
-        (u.match(/product\.suning\.com\/\d+\/(\d+)\.html/) || [])[1] ||
-        (u.match(/item\.(?:m\.)?jd\.com\/(?:product\/)?(\d{10,})\.html/) || [])[1] ||
-        (u.match(/vmall\.com\/product\/(\d{8,})\.html/) || [])[1] ||
-        (u.match(/(\d{10,})/) || [])[1] ||
-        '';
+      const itemId = detailItemIdOf(u);
       if (itemId) {
         try {
           if (isStopped()) throw new Error('已手动停止采集');
@@ -1269,6 +1330,23 @@ export class GenericScrapeAdapter extends BaseAdapter {
       // 详情扩展信息：商品详细描述 / 图片集 / 规格参数表
       let detailInfo = { description: '', images: [], props: null };
       if (directSku && (spu || skus.length)) runLog(`已采用详情接口结构化 SPU/SKU（SPU ${spu ? '✓' : '✗'}，SKU ${skus.length} 条）`);
+      // ⓪b 平台专属 HTML 解析兜底（如亚马逊）：直连被重置/拦截时，浏览器加载的同一份 SSR HTML
+      // 跑同一解析器（twister 变体/价格/品牌），避免直连一挂 SPU/SKU 就空
+      if (!spu && !skus.length && cfg.detailHtmlParse && !opts.fixture) {
+        const itId = detailItemIdOf(String(url));
+        if (itId) {
+          try {
+            const d = cfg.detailHtmlParse(html, itId);
+            if (d.spu) {
+              spu = d.spu;
+              runLog('直连失败，已从页面 HTML 解析出 SPU（平台专属解析器）');
+            }
+            if (d.skus && d.skus.length) skus = d.skus;
+          } catch {
+            /* 解析失败走通用兜底链 */
+          }
+        }
+      }
       if (page) {
         // 评论/问答浏览器抽取：页面可能在加载完成后发生 JS 跳转（如唯品会风控壳页重定向），
         // evaluate 会抛 "Execution context was destroyed"。此处只降级不中断——
@@ -1457,6 +1535,13 @@ export class GenericScrapeAdapter extends BaseAdapter {
         } catch {
           detailInfo = extractDetailInfoFromHtml(html);
         }
+        // 评论列表页兜底（如亚马逊 /product-reviews/<ASIN>）：详情页 SSR 不渲染评论（登录后
+        // 也只有 Top reviews 摘要甚至为空），用已打开的浏览器导航到评论列表页再抽一轮。
+        // 放在 detailInfo 之后：导航会切走当前文档，meta/JSON-LD 提取必须先完成。
+        if (!reviews.length && cfg.reviewsPage) {
+          const itId = detailItemIdOf(String(url));
+          if (itId) reviews = await reviewsViaListPage(page, cfg, itId, runLog);
+        }
       }
       if (!reviews.length) reviews = parseReviews(html, cfg);
       if (!qa.length && cfg.qa) qa = parseQa(html, cfg);
@@ -1499,9 +1584,25 @@ export class GenericScrapeAdapter extends BaseAdapter {
     const cfg = this._cfg(opts);
     // 详情页即评论所在页：优先用平台 detailUrl 构造，其次直接当 URL
     const source = opts.fixture || (cfg.detailUrl ? cfg.detailUrl(itemId) : itemId);
-    const { html, browser } = await load(source, this.id);
+    const { html, page, browser } = await load(source, this.id);
     try {
-      const reviews = parseReviews(html, cfg);
+      let reviews = parseReviews(html, cfg);
+      // 评论列表页兜底（亚马逊等详情页不渲染评论的平台）：
+      // ① 浏览器导航到 cfg.reviewsPage(itemId) 提取 DOM；② cfg.fetchReviewsDirect SSR 直连
+      if (!reviews.length && !opts.fixture && cfg.reviewsPage) {
+        if (page) reviews = await reviewsViaListPage(page, cfg, String(itemId), runLog);
+        if (!reviews.length && cfg.fetchReviewsDirect) {
+          try {
+            const raw = await cfg.fetchReviewsDirect({ itemId, log: runLog });
+            if (raw.length) {
+              reviews = normalizeReviews(raw, cfg);
+              runLog(`评论列表页直连提取：${reviews.length} 条评论`);
+            }
+          } catch (e) {
+            runLog(`评论列表页直连失败（${String(e.message).split('\n')[0].slice(0, 80)}）`);
+          }
+        }
+      }
       if (!reviews.length) {
         throw new Error(
           `未从页面解析到评论。运行 --verify 诊断，或到 config.js 校准 ${this.id} 的 review 选择器/fields；` +
