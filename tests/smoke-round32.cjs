@@ -76,7 +76,7 @@ const check = (name, ok) => {
   await page.click('.nav-item[data-page="settings"]');
   await page.waitForTimeout(1200);
   const panelCount = await page.locator('#page-settings .panel').count();
-  check('设置页面板数=5（登录状态/采集参数/抓取技术/代理池/存储管理）', panelCount === 5);
+  check('设置页面板数=4（登录状态/采集参数（含代理池）/存储管理/抓取技术）', panelCount === 4);
   const cp = await page.locator('#page-settings').innerText();
   check('「数据抓取技术」面板存在（round43）', cp.includes('数据抓取技术') && cp.includes('哪种技术效果最好'));
   check('采集参数内含指纹随机化子模块', cp.includes('请求指纹随机化') && cp.includes('端型范围'));

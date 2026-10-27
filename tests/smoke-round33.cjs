@@ -17,10 +17,11 @@ const check = (name, ok) => {
   await page.goto(BASE, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1500);
 
-  // 1. 代理池面板独立成面板，标题不再带「登录态」
+  // 1. round46 起代理池并入「采集参数」面板为子模块（h3），不再独立成面板
   const h2s = await page.locator('#page-settings .panel h2').allInnerTexts();
-  check('设置页面板标题含独立「代理池」', h2s.some((t) => t.trim() === '代理池'));
-  check('面板标题不再有「代理池 & 登录态」', !h2s.some((t) => t.includes('登录态')));
+  check('代理池已并入采集参数（无独立面板 h2）', !h2s.some((t) => t.trim() === '代理池'));
+  const h3s = await page.locator('#page-settings .panel h3').allInnerTexts();
+  check('采集参数面板含「代理池」子模块（h3）', h3s.some((t) => t.includes('代理池')));
 
   // 2. 登录态提取控件已移除（ckPlatform/ckExtract/ckView/cookieInfo）
   const removed = await page.evaluate(() => ({
@@ -35,10 +36,9 @@ const check = (name, ok) => {
   check('查看登录态按钮已移除', !removed.ckView);
   check('cookieInfo 摘要块已移除', !removed.cookieInfo);
 
-  // 3. 代理池面板保留完整代理能力
+  // 3. 代理池子模块保留完整代理能力（round46 起并入采集参数面板，按 #proxyInfo 所在面板查找）
   const proxyBox = await page.evaluate(() => {
-    const panels = [...document.querySelectorAll('#page-settings .panel')];
-    const p = panels.find((x) => x.querySelector('h2')?.textContent.trim() === '代理池');
+    const p = document.querySelector('#proxyInfo')?.closest('.panel');
     return p
       ? {
           hasInfo: !!p.querySelector('#proxyInfo'),
@@ -50,7 +50,7 @@ const check = (name, ok) => {
         }
       : null;
   });
-  check('代理池面板含 载入/测速/添加/列表 全套控件', proxyBox && proxyBox.hasInfo && proxyBox.hasReload && proxyBox.hasTest && proxyBox.hasAdd && proxyBox.hasList);
+  check('代理池子模块含 载入/测速/添加/列表 全套控件', proxyBox && proxyBox.hasInfo && proxyBox.hasReload && proxyBox.hasTest && proxyBox.hasAdd && proxyBox.hasList);
   check('代理池 hint 指向「平台登录状态」', proxyBox && proxyBox.text.includes('平台登录状态'));
 
   // 4. 代理传输原理图：details 内嵌 SVG，主链路 5 节点 + 失败反馈环
@@ -60,10 +60,13 @@ const check = (name, ok) => {
     const d = document.querySelector('#proxyDiagram');
     if (!d) return null;
     const svg = d.querySelector('svg');
+    // round45 起默认折叠：折叠态 innerText 为空，先展开再取内容断言
+    const defaultCollapsed = !d.open;
+    d.open = true;
     const txt = d.innerText;
     return {
       exists: true,
-      open: d.open,
+      defaultCollapsed,
       hasSvg: !!svg,
       viewBox: svg ? svg.getAttribute('viewBox') : '',
       nodes: ['① 采集请求', '② 代理池选路', '③ 协议适配', '④ 代理服务器', '⑤ 目标电商站点'].filter((t) => txt.includes(t)).length,
@@ -71,8 +74,8 @@ const check = (name, ok) => {
       hasPlaywright: txt.includes('Playwright'),
     };
   });
-  check('原理图 details 存在且默认展开', diag && diag.exists && diag.open);
-  check('原理图内嵌 SVG', diag && diag.hasSvg);
+  check('原理图 details 存在且默认折叠', diag && diag.exists && diag.defaultCollapsed);
+  check('原理图展开后内嵌 SVG', diag && diag.hasSvg);
   check('原理图主链路 5 节点齐全', diag && diag.nodes === 5);
   check('原理图含失败反馈环（冷却/指数退避）', diag && diag.hasFeedback);
   check('原理图含 Playwright 渲染路径说明', diag && diag.hasPlaywright);

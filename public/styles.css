@@ -198,7 +198,7 @@ label.check input { min-width: auto; }
 
 /* 登录状态表「说明」列：内容超长省略号，鼠标悬停 title 展示全文 */
 td.lg-detail {
-  max-width: 280px;
+  max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;

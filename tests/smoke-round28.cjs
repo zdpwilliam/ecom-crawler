@@ -108,7 +108,8 @@ function check(name, cond) {
   check('采集参数在设置页首位附近', panels.some((t) => t.includes('采集参数')));
   const idx1 = panels.findIndex((t) => t.includes('采集参数'));
   const idx2 = panels.findIndex((t) => t.includes('代理池'));
-  check('采集参数位于代理池&登录态上方', idx1 !== -1 && idx2 !== -1 && idx1 < idx2);
+  // round46 起代理池并入采集参数面板（子模块），不再有独立 h2
+  check('采集参数面板存在', idx1 !== -1);
   check('无聊天清空选项', await page.locator('#clrChat').count() === 0);
   const fpHint = await page.locator('text=真实设备指纹池').count();
   check('指纹池说明展示（round34 起文案为「真实设备指纹池」）', fpHint > 0);

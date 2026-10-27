@@ -141,16 +141,44 @@ async function probeJd(log: (m: string) => void) {
   return { status: 'unknown', detail: `订单中心 HTTP ${r.status}，无法判定` };
 }
 
+// 登录跳转型探针：访问该平台「需登录的用户中心」页，观察跳转判定登录态（与 probeJd 同模式）。
+//   mode='login-host'：3xx 且跳转目标命中登录域 → 失效（如苏宁 302 → passport.suning.com）；
+//   mode='any-redirect'：用户中心对游客一律 3xx（如华为 personalCenter 302 → 首页）→ 任何 3xx 即游客。
+async function probeLoginRedirect({ platform, url, mode, loginRe, log }: any) {
+  const arr = loadCookieArr(platform);
+  const cookieStr = arr.map((c) => `${c.name}=${c.value}`).join('; ');
+  // 会话三元绑定：探针与采集共用同一粘性会话的 UA（登录态 ↔ 指纹一致）
+  const sess = acquireSession(platform, true);
+  const ua = sess.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  log(`探针目标：${url}（${mode === 'any-redirect' ? '游客一律 3xx 的用户中心' : '登录域跳转观察'}，redirect=manual，注入 ${arr.length} 条 Cookie，引擎=${sess.userAgent ? `会话#${sess.sid}` : '默认'}）`);
+  const r = await impersonatedFetch({
+    url,
+    headers: { Cookie: cookieStr, 'User-Agent': ua },
+    proxy: sess.proxy,
+    redirect: 'manual',
+  });
+  log(`响应 HTTP ${r.status}（引擎=${r.engine}）`);
+  const loc = r.headers.get?.('location') || (r.headers as any)?.location || '';
+  if (r.status >= 300 && r.status < 400) {
+    if (mode === 'any-redirect' || loginRe.test(String(loc))) {
+      log(`被重定向到 ${String(loc).slice(0, 70)} → 判定未登录`);
+      return { status: 'invalid', detail: `用户中心 302 → ${String(loc).slice(0, 70)}（登录态无效，请重新提取）` };
+    }
+  }
+  if (r.status === 200) return { status: 'valid', detail: '用户中心返回 200（登录态有效）' };
+  return { status: 'unknown', detail: `用户中心 HTTP ${r.status}，无法判定（风控/网络原因）` };
+}
+
 // 无实测探针的平台：Cookie 有效期启发式
 function probeHeuristic(platform: string, log: (m: string) => void) {
   const arr = loadCookieArr(platform);
   const st = cookieStats(arr);
-  log('该平台暂无匿名可调探针接口，退回 Cookie 有效期启发式判定');
+  log('该平台未配置登录探针接口，退回 Cookie 有效期启发式判定');
   log(`统计：共 ${st.count} 条，过期 ${st.expired} 条，会话类 Cookie：${st.sessionish.slice(0, 5).join(', ') || '未识别'}`);
   if (st.expired >= st.count) return { status: 'expired', detail: `共 ${st.count} 条 Cookie 已全部过期` };
   return {
     status: 'probable',
-    detail: `共 ${st.count} 条（过期 ${st.expired}），含会话 Cookie：${st.sessionish.slice(0, 3).join(',') || '未识别'}；该平台暂无匿名可调探针，建议采集一次验证`,
+    detail: `共 ${st.count} 条（过期 ${st.expired}），含会话 Cookie：${st.sessionish.slice(0, 3).join(',') || '未识别'}；按有效期推断疑似有效，采集一次即可确认`,
   };
 }
 
@@ -199,6 +227,16 @@ async function checkLoginCore(platform: string, emit: (m: string) => void) {
     }
     if (platform === 'jd') {
       const r = await probeJd(emit);
+      return { ...withStats, ...r, method: 'api' };
+    }
+    // 「不需要」登录的平台（2026-10-27 起支持可选登录态）也配真实探针，与需登录平台能力一致
+    if (platform === 'suning') {
+      const r = await probeLoginRedirect({ platform, url: 'https://my.suning.com/index.do', mode: 'login-host', loginRe: /passport|login|ids\//i, log: emit });
+      return { ...withStats, ...r, method: 'api' };
+    }
+    if (platform === 'huawei') {
+      // 实测游客访问 personalCenter 一律 302 → 首页；200 即已登录
+      const r = await probeLoginRedirect({ platform, url: 'https://www.vmall.com/personalCenter', mode: 'any-redirect', log: emit });
       return { ...withStats, ...r, method: 'api' };
     }
     const r = probeHeuristic(platform, emit);

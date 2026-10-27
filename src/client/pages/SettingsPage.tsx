@@ -475,9 +475,27 @@ export function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      // 模块内待添加的代理一并保存（「保存设置」保持本模块所有配置；自动补协议头）
+      let proxyNote = '';
+      const pending = proxyInput.trim();
+      if (pending) {
+        const normalized = /^[a-z][a-z0-9+.-]*:\/\//i.test(pending) ? pending : 'http://' + pending;
+        try {
+          const r = await apiJson('/api/proxy/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proxy: normalized }),
+          });
+          setProxyInput('');
+          await loadProxy();
+          proxyNote = r.added === false ? ' ｜ 代理已在池中' : ' ｜ 已新增代理 1 条';
+        } catch (e: any) {
+          proxyNote = ' ｜ ⚠️ 代理添加失败：' + e.message;
+        }
+      }
       await loadSettingsUi();
       // 在「当前设置」前追加显式保存成功标记，避免看起来像没反应
-      setSettingsResult((prev: string) => `✅ 已保存 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })} ｜ ${prev}`);
+      setSettingsResult((prev: string) => `✅ 已保存 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}${proxyNote} ｜ ${prev}`);
     } catch (e: any) {
       setSettingsResult('保存失败：' + e.message);
     } finally {
@@ -898,23 +916,24 @@ export function SettingsPage() {
                       </td>
                       <td>{r.checkedAt ? fmtTime(r.checkedAt) : <span className="muted">—</span>}</td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <button data-lgrelogin={r.platform} className="btn-ghost btn-sm" disabled={checking || browsing} onClick={() => reloginUi(r.platform)}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button data-lgrelogin={r.platform} className="btn-ghost btn-sm" style={{ padding: '2px 8px' }} disabled={checking || browsing} onClick={() => reloginUi(r.platform)}>
                               🔑 {r.count > 0 ? '重新登录' : '登录'}
                             </button>
-                            <button data-lgcheck={r.platform} style={{ padding: '2px 10px', marginLeft: 'auto' }} disabled={checking || browsing} onClick={() => checkLoginUi(r.platform)}>
+                            <button data-lgcheck={r.platform} className="btn-ghost btn-sm" style={{ padding: '2px 8px' }} title="用已保存 Cookie 发一次真实请求验证登录态" disabled={checking || browsing} onClick={() => checkLoginUi(r.platform)}>
                               检测
                             </button>
                           </div>
                           <button
                             data-lgbrowser={r.platform}
                             className="btn-ghost btn-sm"
-                            title="headless 读取提取浏览器档案的实时登录态并弹窗展示（已登录则同步为采集用快照，约 10~40 秒）"
+                            style={{ padding: '2px 8px' }}
+                            title="载入提取浏览器档案中该平台的实时用户登录态并弹窗展示（已登录则同步为采集用快照，约 10~40 秒）"
                             disabled={checking || browsing}
                             onClick={() => checkBrowserUi(r.platform)}
                           >
-                            🌐 获取此浏览器态
+                            🌐 载入此浏览器用户
                           </button>
                         </div>
                       </td>
@@ -1112,104 +1131,105 @@ export function SettingsPage() {
             )}
           </div>
         </div>
-      </section>
 
-      {/* ═══ 面板 3 · 代理池 ═══ */}
-      <section className="panel">
-        <h2>代理池</h2>
-        <div className="controls">
-          <span id="proxyInfo" className="kv">
-            {proxyInfo}
-          </span>
-          <button
-            id="proxyReload"
-            onClick={() =>
-              api('/api/proxy/reload', { method: 'POST' })
-                .then(() => loadProxy())
-                .catch(() => {})
-            }
-          >
-            重新载入代理
-          </button>
-          <button id="proxyTest" onClick={testProxiesUi}>
-            一键测速
-          </button>
-        </div>
-        <div className="controls" style={{ marginTop: 8 }}>
-          <label>
-            添加代理（VPN 本地端口 / 代理服务）
-            <input
-              id="proxyInput"
-              type="text"
-              placeholder="127.0.0.1:7890 或 http://user:pass@host:port（协议头可省略）"
-              style={{ minWidth: 320 }}
-              value={proxyInput}
-              onChange={(e) => setProxyInput(e.target.value)}
-            />
-          </label>
-          <button id="proxyAdd" onClick={addProxyUi}>
-            添加代理
-          </button>
-          <span className="hint">
-            VPN 客户端（Clash/V2Ray 等）通常在本地开 HTTP/SOCKS 端口，直接填 <code>127.0.0.1:端口</code> 即接入代理池。
-          </span>
-        </div>
-        <div id="proxyList" className="result">
-          {proxies.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>代理</th>
-                  <th>测速</th>
-                  <th>状态</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {proxies.map((x: any) => {
-                  const t = lastTestRef.current[x.proxy];
-                  let speed: any, status: any;
-                  if (t) {
-                    speed = t.ok ? `✅ ${t.ms}ms` : '❌ 失败';
-                    status = t.ok ? (x.failures > 0 ? `成功(此前失败${x.failures}次)` : '正常') : t.error || '失败';
-                  } else {
-                    speed = x.lastLatencyMs != null ? x.lastLatencyMs + 'ms' : '未测速';
-                    status = x.cooldownUntil > Date.now() ? '❄️冷却' : x.failures > 0 ? `失败${x.failures}次` : '正常';
-                  }
-                  return (
-                    <tr key={x.proxy}>
-                      <td>{x.proxy}</td>
-                      <td>{speed}</td>
-                      <td>{status}</td>
-                      <td>
-                        <button className="btn-danger" style={{ padding: '2px 8px' }} onClick={() => delProxyUi(x.proxy)}>
-                          删除
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
-            '代理池为空：直连本机 IP 抓取。建议添加 VPN 本地端口或代理服务，避免家庭 IP 直接暴露。'
-          )}
-        </div>
-        <p className="hint">
-          <b>代理池</b>：每次请求自动轮换（轮询挑一个不在冷却期的），失败自动冷却（5s 起指数退避，上限 60s）并换下一个；也可直接编辑 <code>data/proxies.txt</code>（每行一个）或用环境变量
-          <code>CRAWL_PROXY_POOL</code>。
-          <br />
-          <b>登录态</b>：已由上方「平台登录状态」统一管理（查看 Cookie / 检测 / 重新登录），采集时自动注入有效 Cookie。
-        </p>
-        <details className="diag" id="proxyDiagram" open style={{ marginTop: 10 }}>
-          <summary>代理传输原理图（请求是如何走代理的）</summary>
-          <div style={{ marginTop: 8, overflowX: 'auto' }}>
-            <ProxyDiagram />
+        {/* 子模块 · 代理池（出口 IP / VPN 端口；添加/删除即时生效） */}
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--line)' }}>
+          <h3 className="sub-h fp-title">代理池（出口 IP / VPN 端口）</h3>
+          <div className="controls">
+            <span id="proxyInfo" className="kv">
+              {proxyInfo}
+            </span>
+            <button
+              id="proxyReload"
+              onClick={() =>
+                api('/api/proxy/reload', { method: 'POST' })
+                  .then(() => loadProxy())
+                  .catch(() => {})
+              }
+            >
+              重新载入代理
+            </button>
+            <button id="proxyTest" onClick={testProxiesUi}>
+              一键测速
+            </button>
           </div>
-        </details>
+          <div className="controls" style={{ marginTop: 8 }}>
+            <label>
+              添加代理（VPN 本地端口 / 代理服务）
+              <input
+                id="proxyInput"
+                type="text"
+                placeholder="127.0.0.1:7890 或 http://user:pass@host:port（协议头可省略）"
+                style={{ minWidth: 320 }}
+                value={proxyInput}
+                onChange={(e) => setProxyInput(e.target.value)}
+              />
+            </label>
+            <button id="proxyAdd" onClick={addProxyUi}>
+              添加代理
+            </button>
+            <span className="hint">
+              VPN 客户端（Clash/V2Ray 等）通常在本地开 HTTP/SOCKS 端口，直接填 <code>127.0.0.1:端口</code> 即接入代理池。
+            </span>
+          </div>
+          <div id="proxyList" className="result">
+            {proxies.length ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>代理</th>
+                    <th>测速</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {proxies.map((x: any) => {
+                    const t = lastTestRef.current[x.proxy];
+                    let speed: any, status: any;
+                    if (t) {
+                      speed = t.ok ? `✅ ${t.ms}ms` : '❌ 失败';
+                      status = t.ok ? (x.failures > 0 ? `成功(此前失败${x.failures}次)` : '正常') : t.error || '失败';
+                    } else {
+                      speed = x.lastLatencyMs != null ? x.lastLatencyMs + 'ms' : '未测速';
+                      status = x.cooldownUntil > Date.now() ? '❄️冷却' : x.failures > 0 ? `失败${x.failures}次` : '正常';
+                    }
+                    return (
+                      <tr key={x.proxy}>
+                        <td>{x.proxy}</td>
+                        <td>{speed}</td>
+                        <td>{status}</td>
+                        <td>
+                          <button className="btn-danger" style={{ padding: '2px 8px' }} onClick={() => delProxyUi(x.proxy)}>
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              '代理池为空：直连本机 IP 抓取。建议添加 VPN 本地端口或代理服务，避免家庭 IP 直接暴露。'
+            )}
+          </div>
+          <p className="hint">
+            <b>代理池</b>：每次请求自动轮换（轮询挑一个不在冷却期的），失败自动冷却（5s 起指数退避，上限 60s）并换下一个；也可直接编辑 <code>data/proxies.txt</code>（每行一个）或用环境变量
+            <code>CRAWL_PROXY_POOL</code>。
+            <br />
+            <b>登录态</b>：已由上方「平台登录状态」统一管理（查看 Cookie / 检测 / 重新登录），采集时自动注入有效 Cookie。
+          </p>
+          <details className="diag" id="proxyDiagram" style={{ marginTop: 10 }}>
+            <summary>代理传输原理图（请求是如何走代理的，点击展开）</summary>
+            <div style={{ marginTop: 8, overflowX: 'auto' }}>
+              <ProxyDiagram />
+            </div>
+          </details>
+          <p className="hint">「保存设置」按钮同样会保存本模块内的配置（含填写的代理地址，自动补协议头）；代理的添加 / 删除 / 测速为即时操作，持久化到 <code>data/proxies.txt</code>。</p>
+        </div>
       </section>
 
-      {/* ═══ 面板 4 · 存储管理 ═══ */}
+      {/* ═══ 面板 3 · 存储管理 ═══ */}
       <section className="panel">
         <h2>存储管理</h2>
         <div className="controls">
@@ -1240,7 +1260,7 @@ export function SettingsPage() {
         </p>
       </section>
 
-      {/* ═══ 面板 5 · 数据抓取技术（页面最下方） ═══ */}
+      {/* ═══ 面板 4 · 数据抓取技术（页面最下方） ═══ */}
       <section className="panel">
         <h2>数据抓取技术</h2>
         <p className="hint" style={{ margin: '0 0 10px' }}>
@@ -1253,8 +1273,8 @@ export function SettingsPage() {
         ) : (
           <>
             {/* 全站技术栈 */}
-            <details className="diag" open style={{ marginBottom: 12 }}>
-              <summary>全站技术栈（{tech.stack.length} 项，点击折叠）</summary>
+            <details className="diag" style={{ marginBottom: 12 }}>
+              <summary>全站技术栈（{tech.stack.length} 项，点击展开）</summary>
               <table style={{ marginTop: 8 }}>
                 <thead>
                   <tr>
@@ -1345,7 +1365,7 @@ export function SettingsPage() {
                     <table>
                       <thead>
                         <tr>
-                          <th style={{ width: 230 }}>技术通道</th>
+                          <th style={{ width: 330 }}>技术通道</th>
                           <th>结果</th>
                           <th>数据量</th>
                           <th>耗时</th>
@@ -1369,8 +1389,15 @@ export function SettingsPage() {
                             <td>{c.count}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{(c.ms / 1000).toFixed(1)}s</td>
                             <td style={{ whiteSpace: 'normal', fontSize: 12 }}>{c.via || '—'}</td>
-                            <td style={{ whiteSpace: 'normal', fontSize: 12, maxWidth: 200 }}>{c.sample || '—'}</td>
-                            <td style={{ whiteSpace: 'normal', fontSize: 12, color: '#9a3412' }}>{c.error || ''}</td>
+                            <td style={{ whiteSpace: 'normal', fontSize: 12, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.sample || ''}>
+                              {c.sample || '—'}
+                            </td>
+                            <td
+                              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170, fontSize: 12, color: '#9a3412' }}
+                              title={(c.error || '').replace(/\n/g, '　')}
+                            >
+                              {c.error || ''}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

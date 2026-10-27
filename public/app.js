@@ -26406,8 +26406,25 @@ ${r.login?.detail || ""}`
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
         });
+        let proxyNote = "";
+        const pending = proxyInput.trim();
+        if (pending) {
+          const normalized = /^[a-z][a-z0-9+.-]*:\/\//i.test(pending) ? pending : "http://" + pending;
+          try {
+            const r = await apiJson("/api/proxy/add", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ proxy: normalized })
+            });
+            setProxyInput("");
+            await loadProxy();
+            proxyNote = r.added === false ? " \uFF5C \u4EE3\u7406\u5DF2\u5728\u6C60\u4E2D" : " \uFF5C \u5DF2\u65B0\u589E\u4EE3\u7406 1 \u6761";
+          } catch (e) {
+            proxyNote = " \uFF5C \u26A0\uFE0F \u4EE3\u7406\u6DFB\u52A0\u5931\u8D25\uFF1A" + e.message;
+          }
+        }
         await loadSettingsUi();
-        setSettingsResult((prev) => `\u2705 \u5DF2\u4FDD\u5B58 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false })} \uFF5C ${prev}`);
+        setSettingsResult((prev) => `\u2705 \u5DF2\u4FDD\u5B58 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour12: false })}${proxyNote} \uFF5C ${prev}`);
       } catch (e) {
         setSettingsResult("\u4FDD\u5B58\u5931\u8D25\uFF1A" + e.message);
       } finally {
@@ -26814,23 +26831,24 @@ ${sum}
               ] }) }),
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { className: "lg-detail", title: r.detail || "", children: checking ? "\u6B63\u5728\u53D1\u771F\u5B9E\u8BF7\u6C42\u9A8C\u8BC1\u8BE5\u5E73\u53F0\u767B\u5F55\u6001\uFF0C\u7EA6\u9700\u6570\u79D2\u5230\u6570\u5341\u79D2\u2026" : r.detail || "" }),
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: r.checkedAt ? fmtTime(r.checkedAt) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "muted", children: "\u2014" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("button", { "data-lgrelogin": r.platform, className: "btn-ghost btn-sm", disabled: checking || browsing, onClick: () => reloginUi(r.platform), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 3 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", gap: 4, alignItems: "center" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("button", { "data-lgrelogin": r.platform, className: "btn-ghost btn-sm", style: { padding: "2px 8px" }, disabled: checking || browsing, onClick: () => reloginUi(r.platform), children: [
                     "\u{1F511} ",
                     r.count > 0 ? "\u91CD\u65B0\u767B\u5F55" : "\u767B\u5F55"
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { "data-lgcheck": r.platform, style: { padding: "2px 10px", marginLeft: "auto" }, disabled: checking || browsing, onClick: () => checkLoginUi(r.platform), children: "\u68C0\u6D4B" })
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { "data-lgcheck": r.platform, className: "btn-ghost btn-sm", style: { padding: "2px 8px" }, title: "\u7528\u5DF2\u4FDD\u5B58 Cookie \u53D1\u4E00\u6B21\u771F\u5B9E\u8BF7\u6C42\u9A8C\u8BC1\u767B\u5F55\u6001", disabled: checking || browsing, onClick: () => checkLoginUi(r.platform), children: "\u68C0\u6D4B" })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   "button",
                   {
                     "data-lgbrowser": r.platform,
                     className: "btn-ghost btn-sm",
-                    title: "headless \u8BFB\u53D6\u63D0\u53D6\u6D4F\u89C8\u5668\u6863\u6848\u7684\u5B9E\u65F6\u767B\u5F55\u6001\u5E76\u5F39\u7A97\u5C55\u793A\uFF08\u5DF2\u767B\u5F55\u5219\u540C\u6B65\u4E3A\u91C7\u96C6\u7528\u5FEB\u7167\uFF0C\u7EA6 10~40 \u79D2\uFF09",
+                    style: { padding: "2px 8px" },
+                    title: "\u8F7D\u5165\u63D0\u53D6\u6D4F\u89C8\u5668\u6863\u6848\u4E2D\u8BE5\u5E73\u53F0\u7684\u5B9E\u65F6\u7528\u6237\u767B\u5F55\u6001\u5E76\u5F39\u7A97\u5C55\u793A\uFF08\u5DF2\u767B\u5F55\u5219\u540C\u6B65\u4E3A\u91C7\u96C6\u7528\u5FEB\u7167\uFF0C\u7EA6 10~40 \u79D2\uFF09",
                     disabled: checking || browsing,
                     onClick: () => checkBrowserUi(r.platform),
-                    children: "\u{1F310} \u83B7\u53D6\u6B64\u6D4F\u89C8\u5668\u6001"
+                    children: "\u{1F310} \u8F7D\u5165\u6B64\u6D4F\u89C8\u5668\u7528\u6237"
                   }
                 )
               ] }) })
@@ -26991,84 +27009,89 @@ ${sum}
               ] }, i)) })
             ] })
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "muted", children: "\u52A0\u8F7D\u4E2D\u2026" }) })
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { children: "\u4EE3\u7406\u6C60" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { id: "proxyInfo", className: "kv", children: proxyInfo }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-            "button",
-            {
-              id: "proxyReload",
-              onClick: () => api("/api/proxy/reload", { method: "POST" }).then(() => loadProxy()).catch(() => {
-              }),
-              children: "\u91CD\u65B0\u8F7D\u5165\u4EE3\u7406"
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { id: "proxyTest", onClick: testProxiesUi, children: "\u4E00\u952E\u6D4B\u901F" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", style: { marginTop: 8 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { children: [
-            "\u6DFB\u52A0\u4EE3\u7406\uFF08VPN \u672C\u5730\u7AEF\u53E3 / \u4EE3\u7406\u670D\u52A1\uFF09",
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--line)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { className: "sub-h fp-title", children: "\u4EE3\u7406\u6C60\uFF08\u51FA\u53E3 IP / VPN \u7AEF\u53E3\uFF09" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { id: "proxyInfo", className: "kv", children: proxyInfo }),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "input",
+              "button",
               {
-                id: "proxyInput",
-                type: "text",
-                placeholder: "127.0.0.1:7890 \u6216 http://user:pass@host:port\uFF08\u534F\u8BAE\u5934\u53EF\u7701\u7565\uFF09",
-                style: { minWidth: 320 },
-                value: proxyInput,
-                onChange: (e) => setProxyInput(e.target.value)
+                id: "proxyReload",
+                onClick: () => api("/api/proxy/reload", { method: "POST" }).then(() => loadProxy()).catch(() => {
+                }),
+                children: "\u91CD\u65B0\u8F7D\u5165\u4EE3\u7406"
               }
-            )
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { id: "proxyTest", onClick: testProxiesUi, children: "\u4E00\u952E\u6D4B\u901F" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { id: "proxyAdd", onClick: addProxyUi, children: "\u6DFB\u52A0\u4EE3\u7406" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "hint", children: [
-            "VPN \u5BA2\u6237\u7AEF\uFF08Clash/V2Ray \u7B49\uFF09\u901A\u5E38\u5728\u672C\u5730\u5F00 HTTP/SOCKS \u7AEF\u53E3\uFF0C\u76F4\u63A5\u586B ",
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "127.0.0.1:\u7AEF\u53E3" }),
-            " \u5373\u63A5\u5165\u4EE3\u7406\u6C60\u3002"
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "controls", style: { marginTop: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { children: [
+              "\u6DFB\u52A0\u4EE3\u7406\uFF08VPN \u672C\u5730\u7AEF\u53E3 / \u4EE3\u7406\u670D\u52A1\uFF09",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                "input",
+                {
+                  id: "proxyInput",
+                  type: "text",
+                  placeholder: "127.0.0.1:7890 \u6216 http://user:pass@host:port\uFF08\u534F\u8BAE\u5934\u53EF\u7701\u7565\uFF09",
+                  style: { minWidth: 320 },
+                  value: proxyInput,
+                  onChange: (e) => setProxyInput(e.target.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { id: "proxyAdd", onClick: addProxyUi, children: "\u6DFB\u52A0\u4EE3\u7406" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { className: "hint", children: [
+              "VPN \u5BA2\u6237\u7AEF\uFF08Clash/V2Ray \u7B49\uFF09\u901A\u5E38\u5728\u672C\u5730\u5F00 HTTP/SOCKS \u7AEF\u53E3\uFF0C\u76F4\u63A5\u586B ",
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "127.0.0.1:\u7AEF\u53E3" }),
+              " \u5373\u63A5\u5165\u4EE3\u7406\u6C60\u3002"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { id: "proxyList", className: "result", children: proxies.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u4EE3\u7406" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u6D4B\u901F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u72B6\u6001" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u64CD\u4F5C" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: proxies.map((x) => {
+              const t = lastTestRef.current[x.proxy];
+              let speed, status;
+              if (t) {
+                speed = t.ok ? `\u2705 ${t.ms}ms` : "\u274C \u5931\u8D25";
+                status = t.ok ? x.failures > 0 ? `\u6210\u529F(\u6B64\u524D\u5931\u8D25${x.failures}\u6B21)` : "\u6B63\u5E38" : t.error || "\u5931\u8D25";
+              } else {
+                speed = x.lastLatencyMs != null ? x.lastLatencyMs + "ms" : "\u672A\u6D4B\u901F";
+                status = x.cooldownUntil > Date.now() ? "\u2744\uFE0F\u51B7\u5374" : x.failures > 0 ? `\u5931\u8D25${x.failures}\u6B21` : "\u6B63\u5E38";
+              }
+              return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: x.proxy }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: speed }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: status }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "btn-danger", style: { padding: "2px 8px" }, onClick: () => delProxyUi(x.proxy), children: "\u5220\u9664" }) })
+              ] }, x.proxy);
+            }) })
+          ] }) : "\u4EE3\u7406\u6C60\u4E3A\u7A7A\uFF1A\u76F4\u8FDE\u672C\u673A IP \u6293\u53D6\u3002\u5EFA\u8BAE\u6DFB\u52A0 VPN \u672C\u5730\u7AEF\u53E3\u6216\u4EE3\u7406\u670D\u52A1\uFF0C\u907F\u514D\u5BB6\u5EAD IP \u76F4\u63A5\u66B4\u9732\u3002" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u4EE3\u7406\u6C60" }),
+            "\uFF1A\u6BCF\u6B21\u8BF7\u6C42\u81EA\u52A8\u8F6E\u6362\uFF08\u8F6E\u8BE2\u6311\u4E00\u4E2A\u4E0D\u5728\u51B7\u5374\u671F\u7684\uFF09\uFF0C\u5931\u8D25\u81EA\u52A8\u51B7\u5374\uFF085s \u8D77\u6307\u6570\u9000\u907F\uFF0C\u4E0A\u9650 60s\uFF09\u5E76\u6362\u4E0B\u4E00\u4E2A\uFF1B\u4E5F\u53EF\u76F4\u63A5\u7F16\u8F91 ",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "data/proxies.txt" }),
+            "\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF09\u6216\u7528\u73AF\u5883\u53D8\u91CF",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "CRAWL_PROXY_POOL" }),
+            "\u3002",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("br", {}),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u767B\u5F55\u6001" }),
+            "\uFF1A\u5DF2\u7531\u4E0A\u65B9\u300C\u5E73\u53F0\u767B\u5F55\u72B6\u6001\u300D\u7EDF\u4E00\u7BA1\u7406\uFF08\u67E5\u770B Cookie / \u68C0\u6D4B / \u91CD\u65B0\u767B\u5F55\uFF09\uFF0C\u91C7\u96C6\u65F6\u81EA\u52A8\u6CE8\u5165\u6709\u6548 Cookie\u3002"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", id: "proxyDiagram", style: { marginTop: 10 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "\u4EE3\u7406\u4F20\u8F93\u539F\u7406\u56FE\uFF08\u8BF7\u6C42\u662F\u5982\u4F55\u8D70\u4EE3\u7406\u7684\uFF0C\u70B9\u51FB\u5C55\u5F00\uFF09" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: 8, overflowX: "auto" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ProxyDiagram, {}) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
+            "\u300C\u4FDD\u5B58\u8BBE\u7F6E\u300D\u6309\u94AE\u540C\u6837\u4F1A\u4FDD\u5B58\u672C\u6A21\u5757\u5185\u7684\u914D\u7F6E\uFF08\u542B\u586B\u5199\u7684\u4EE3\u7406\u5730\u5740\uFF0C\u81EA\u52A8\u8865\u534F\u8BAE\u5934\uFF09\uFF1B\u4EE3\u7406\u7684\u6DFB\u52A0 / \u5220\u9664 / \u6D4B\u901F\u4E3A\u5373\u65F6\u64CD\u4F5C\uFF0C\u6301\u4E45\u5316\u5230 ",
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "data/proxies.txt" }),
+            "\u3002"
           ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { id: "proxyList", className: "result", children: proxies.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u4EE3\u7406" }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u6D4B\u901F" }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u72B6\u6001" }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u64CD\u4F5C" })
-          ] }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("tbody", { children: proxies.map((x) => {
-            const t = lastTestRef.current[x.proxy];
-            let speed, status;
-            if (t) {
-              speed = t.ok ? `\u2705 ${t.ms}ms` : "\u274C \u5931\u8D25";
-              status = t.ok ? x.failures > 0 ? `\u6210\u529F(\u6B64\u524D\u5931\u8D25${x.failures}\u6B21)` : "\u6B63\u5E38" : t.error || "\u5931\u8D25";
-            } else {
-              speed = x.lastLatencyMs != null ? x.lastLatencyMs + "ms" : "\u672A\u6D4B\u901F";
-              status = x.cooldownUntil > Date.now() ? "\u2744\uFE0F\u51B7\u5374" : x.failures > 0 ? `\u5931\u8D25${x.failures}\u6B21` : "\u6B63\u5E38";
-            }
-            return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: x.proxy }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: speed }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: status }),
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "btn-danger", style: { padding: "2px 8px" }, onClick: () => delProxyUi(x.proxy), children: "\u5220\u9664" }) })
-            ] }, x.proxy);
-          }) })
-        ] }) : "\u4EE3\u7406\u6C60\u4E3A\u7A7A\uFF1A\u76F4\u8FDE\u672C\u673A IP \u6293\u53D6\u3002\u5EFA\u8BAE\u6DFB\u52A0 VPN \u672C\u5730\u7AEF\u53E3\u6216\u4EE3\u7406\u670D\u52A1\uFF0C\u907F\u514D\u5BB6\u5EAD IP \u76F4\u63A5\u66B4\u9732\u3002" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u4EE3\u7406\u6C60" }),
-          "\uFF1A\u6BCF\u6B21\u8BF7\u6C42\u81EA\u52A8\u8F6E\u6362\uFF08\u8F6E\u8BE2\u6311\u4E00\u4E2A\u4E0D\u5728\u51B7\u5374\u671F\u7684\uFF09\uFF0C\u5931\u8D25\u81EA\u52A8\u51B7\u5374\uFF085s \u8D77\u6307\u6570\u9000\u907F\uFF0C\u4E0A\u9650 60s\uFF09\u5E76\u6362\u4E0B\u4E00\u4E2A\uFF1B\u4E5F\u53EF\u76F4\u63A5\u7F16\u8F91 ",
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "data/proxies.txt" }),
-          "\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF09\u6216\u7528\u73AF\u5883\u53D8\u91CF",
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: "CRAWL_PROXY_POOL" }),
-          "\u3002",
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("br", {}),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "\u767B\u5F55\u6001" }),
-          "\uFF1A\u5DF2\u7531\u4E0A\u65B9\u300C\u5E73\u53F0\u767B\u5F55\u72B6\u6001\u300D\u7EDF\u4E00\u7BA1\u7406\uFF08\u67E5\u770B Cookie / \u68C0\u6D4B / \u91CD\u65B0\u767B\u5F55\uFF09\uFF0C\u91C7\u96C6\u65F6\u81EA\u52A8\u6CE8\u5165\u6709\u6548 Cookie\u3002"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", id: "proxyDiagram", open: true, style: { marginTop: 10 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "\u4EE3\u7406\u4F20\u8F93\u539F\u7406\u56FE\uFF08\u8BF7\u6C42\u662F\u5982\u4F55\u8D70\u4EE3\u7406\u7684\uFF09" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: 8, overflowX: "auto" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ProxyDiagram, {}) })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "panel", children: [
@@ -27104,11 +27127,11 @@ ${sum}
           "\u6280\u672F\u77E9\u9635\u52A0\u8F7D\u5931\u8D25\uFF1A",
           tech.error
         ] }) : !tech ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "muted", children: "\u52A0\u8F7D\u4E2D\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", open: true, style: { marginBottom: 12 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "diag", style: { marginBottom: 12 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("summary", { children: [
               "\u5168\u7AD9\u6280\u672F\u6808\uFF08",
               tech.stack.length,
-              " \u9879\uFF0C\u70B9\u51FB\u6298\u53E0\uFF09"
+              " \u9879\uFF0C\u70B9\u51FB\u5C55\u5F00\uFF09"
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { style: { marginTop: 8 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
@@ -27186,7 +27209,7 @@ ${sum}
             diagResult ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "table-wrap", style: { marginTop: 10 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("table", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("tr", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 230 }, children: "\u6280\u672F\u901A\u9053" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { style: { width: 330 }, children: "\u6280\u672F\u901A\u9053" }),
                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u7ED3\u679C" }),
                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u6570\u636E\u91CF" }),
                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("th", { children: "\u8017\u65F6" }),
@@ -27206,8 +27229,15 @@ ${sum}
                     "s"
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12 }, children: c.via || "\u2014" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12, maxWidth: 200 }, children: c.sample || "\u2014" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12, color: "#9a3412" }, children: c.error || "" })
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("td", { style: { whiteSpace: "normal", fontSize: 12, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis" }, title: c.sample || "", children: c.sample || "\u2014" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                    "td",
+                    {
+                      style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 170, fontSize: 12, color: "#9a3412" },
+                      title: (c.error || "").replace(/\n/g, "\u3000"),
+                      children: c.error || ""
+                    }
+                  )
                 ] }, c.key)) })
               ] }) }),
               /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "hint", style: { margin: "8px 0 0" }, children: [
